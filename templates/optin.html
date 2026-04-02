@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIELDHAND — Get Started</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f4f6f9;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+    max-width: 480px;
+    width: 100%;
+    overflow: hidden;
+  }
+  .header {
+    background: #1e3a5f;
+    color: white;
+    padding: 32px 36px 24px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .header p {
+    font-size: 15px;
+    opacity: 0.85;
+    line-height: 1.5;
+  }
+  .body { padding: 32px 36px; }
+  .tagline {
+    font-size: 16px;
+    color: #333;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+  .feature-list {
+    list-style: none;
+    margin-bottom: 28px;
+  }
+  .feature-list li {
+    font-size: 14px;
+    color: #555;
+    padding: 5px 0;
+    padding-left: 22px;
+    position: relative;
+  }
+  .feature-list li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #1e3a5f;
+    font-weight: 700;
+  }
+  .form-group {
+    margin-bottom: 16px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  input[type="text"],
+  input[type="tel"],
+  input[type="email"] {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #ddd;
+    border-radius: 8px;
+    font-size: 16px;
+    color: #1a1a1a;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+  input:focus { border-color: #1e3a5f; }
+  .consent-box {
+    background: #f8f9fb;
+    border: 1.5px solid #e0e4ea;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.6;
+  }
+  .consent-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .consent-check input[type="checkbox"] {
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: #1e3a5f;
+  }
+  .consent-check label {
+    font-size: 13px;
+    color: #444;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .btn {
+    width: 100%;
+    padding: 15px;
+    background: #1e3a5f;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #16304f; }
+  .btn:disabled { background: #999; cursor: not-allowed; }
+  .fine-print {
+    font-size: 12px;
+    color: #999;
+    text-align: center;
+    margin-top: 16px;
+    line-height: 1.5;
+  }
+  .fine-print a { color: #1e3a5f; }
+
+  /* Success state */
+  .success {
+    display: none;
+    text-align: center;
+    padding: 48px 36px;
+  }
+  .success-icon {
+    font-size: 56px;
+    margin-bottom: 16px;
+  }
+  .success h2 {
+    font-size: 22px;
+    color: #1e3a5f;
+    margin-bottom: 10px;
+  }
+  .success p {
+    font-size: 15px;
+    color: #555;
+    line-height: 1.6;
+  }
+  .success .number {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1e3a5f;
+    background: #f0f4fa;
+    padding: 12px 24px;
+    border-radius: 8px;
+    display: inline-block;
+    margin: 16px 0;
+    letter-spacing: 2px;
+  }
+  .error-msg {
+    color: #c0392b;
+    font-size: 13px;
+    margin-top: 8px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <!-- OPT-IN FORM -->
+  <div id="form-view">
+    <div class="header">
+      <h1>FIELDHAND</h1>
+      <p>The AI business assistant for independent contractors.</p>
+    </div>
+    <div class="body">
+      <p class="tagline">
+        Stop losing money on paperwork. FIELDHAND handles invoices,
+        expenses, client follow-ups, and job tracking — all over text message.
+      </p>
+      <ul class="feature-list">
+        <li>Track jobs from lead to paid</li>
+        <li>Log expenses by texting or sending a photo</li>
+        <li>Auto-generate and send invoices</li>
+        <li>Chase overdue payments for you</li>
+        <li>Always know what you're owed</li>
+      </ul>
+
+      <form id="optin-form">
+        <div class="form-group">
+          <label for="name">Your Name</label>
+          <input type="text" id="name" name="name" placeholder="Mike Russo" required>
+        </div>
+        <div class="form-group">
+          <label for="phone">Mobile Number</label>
+          <input type="tel" id="phone" name="phone" placeholder="+1 (555) 000-0000" required>
+        </div>
+        <div class="form-group">
+          <label for="email">Email (optional)</label>
+          <input type="email" id="email" name="email" placeholder="mike@russoelectric.com">
+        </div>
+
+        <div class="consent-box">
+          By signing up, you agree to receive SMS messages from FIELDHAND
+          regarding your jobs, invoices, expenses, and business reminders.
+          Message frequency varies based on your activity.
+          Message and data rates may apply. Reply STOP at any time to
+          opt out. Reply HELP for help.
+        </div>
+
+        <div class="consent-check">
+          <input type="checkbox" id="agree" name="agree" required>
+          <label for="agree">
+            I agree to receive SMS messages from FIELDHAND and understand
+            I can reply STOP at any time to unsubscribe.
+          </label>
+        </div>
+
+        <button type="submit" class="btn" id="submit-btn">
+          Start Using FIELDHAND →
+        </button>
+        <p class="error-msg" id="error-msg"></p>
+      </form>
+
+      <p class="fine-print">
+        FIELDHAND is a business tool, not a marketing service.<br>
+        We never share your number. No spam.
+        <a href="#privacy">Privacy Policy</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- SUCCESS STATE -->
+  <div class="success" id="success-view">
+    <div class="success-icon">✅</div>
+    <h2>You're all set!</h2>
+    <p>Text <strong>hi</strong> to your FIELDHAND number to get started:</p>
+    <div class="number" id="fieldhand-number">Loading...</div>
+    <p>
+      FIELDHAND will walk you through setup in about 60 seconds.<br><br>
+      Just text from the number you signed up with.
+    </p>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('optin-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const errorMsg = document.getElementById('error-msg');
+
+  function formatPhone(val) {
+    // Strip everything except digits and leading +
+    let digits = val.replace(/[^\d+]/g, '');
+    if (!digits.startsWith('+')) {
+      digits = '+1' + digits.replace(/\D/g, '');
+    }
+    return digits;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing you up...';
+    errorMsg.style.display = 'none';
+
+    const name = document.getElementById('name').value.trim();
+    const phone = formatPhone(document.getElementById('phone').value.trim());
+    const email = document.getElementById('email').value.trim();
+    const agreed = document.getElementById('agree').checked;
+
+    try {
+      const resp = await fetch('/optin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, email, agreed_to_terms: agreed }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        document.getElementById('form-view').style.display = 'none';
+        document.getElementById('success-view').style.display = 'block';
+        document.getElementById('fieldhand-number').textContent = data.fieldhand_number;
+      } else {
+        errorMsg.textContent = data.detail || 'Something went wrong. Try again.';
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Start Using FIELDHAND →';
+      }
+    } catch (err) {
+      errorMsg.textContent = 'Network error. Check your connection and try again.';
+      errorMsg.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Start Using FIELDHAND →';
+    }
+  });
+</script>
+
+</body>
+</html>

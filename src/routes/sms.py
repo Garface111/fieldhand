@@ -48,6 +48,27 @@ async def sms_webhook(
     phone = From.strip()
     body = Body.strip()
 
+    # STOP / HELP compliance keywords — handle before anything else
+    upper = body.upper().strip()
+    if upper in ("STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"):
+        # Twilio auto-handles STOP at carrier level, but log it
+        return twiml_reply(
+            "You have been unsubscribed from FIELDHAND. "
+            "No further messages will be sent. "
+            "Text START to re-subscribe anytime."
+        )
+    if upper == "HELP":
+        return twiml_reply(
+            "FIELDHAND Help: Text me anything about your jobs, expenses, or invoices. "
+            "Reply STOP to unsubscribe. "
+            "Support: support@fieldhand.app"
+        )
+    if upper in ("START", "UNSTOP"):
+        return twiml_reply(
+            "Welcome back to FIELDHAND! You're re-subscribed. "
+            "Text me anything to pick up where you left off."
+        )
+
     db: Session = SessionLocal()
     try:
         contractor = db.query(Contractor).filter(Contractor.phone == phone).first()

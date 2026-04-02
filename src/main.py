@@ -41,13 +41,15 @@ app.mount("/docs-static", StaticFiles(directory="generated_docs"), name="static"
 from src.routes.sms import router as sms_router
 from src.routes.stripe_webhook import router as stripe_router
 from src.routes.dashboard import router as dashboard_router
+from src.routes.consent import router as consent_router
 
 app.include_router(sms_router)
 app.include_router(stripe_router)
 app.include_router(dashboard_router)
+app.include_router(consent_router)
 
 
-@app.get("/")
+@app.get("/status")
 def root():
     return {"status": "FIELDHAND is running", "version": "0.1.0"}
 
