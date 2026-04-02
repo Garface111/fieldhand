@@ -54,10 +54,15 @@ def generate_alerts(contractor: Contractor, db: Session) -> list[str]:
         )
         .all()
     )
+    alerted_jobs = set()
     for job in complete_jobs:
+        if job.id in alerted_jobs:
+            continue
+        alerted_jobs.add(job.id)
         has_invoice = bool(db.query(Invoice).filter(Invoice.job_id == job.id).first())
         if not has_invoice:
-            days_since = (now - job.completed_at).days if job.completed_at else 0
+            completed = job.completed_at.replace(tzinfo=timezone.utc) if job.completed_at and job.completed_at.tzinfo is None else job.completed_at
+            days_since = (now - completed).days if completed else 0
             if days_since >= 3:
                 alerts.append(
                     f"Hey {contractor.name.split()[0]}, "
