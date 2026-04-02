@@ -17,6 +17,15 @@ from src.models import (
 )
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware UTC. Handles naive datetimes from SQLite."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class Memory:
     def __init__(self, db: Session, contractor_id: str):
         self.db = db
@@ -139,7 +148,7 @@ class Memory:
                     "amount": inv.amount,
                     "status": inv.status.value,
                     "sent_at": inv.sent_at.isoformat() if inv.sent_at else None,
-                    "days_overdue": (now - inv.sent_at).days if inv.sent_at else None,
+                    "days_overdue": (now - _as_utc(inv.sent_at)).days if inv.sent_at else None,
                 }
                 for inv in overdue
             ],
@@ -297,13 +306,14 @@ class Memory:
     def get_overdue_invoices(self, min_days: int = 0) -> list[Invoice]:
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=min_days)
-        return (
+        invoices = (
             self.db.query(Invoice)
             .filter(
                 Invoice.contractor_id == self.contractor_id,
                 Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.OVERDUE]),
-                Invoice.sent_at <= cutoff,
             )
             .order_by(Invoice.sent_at)
             .all()
         )
+        # Compare with tz-aware cutoff, normalizing SQLite naive datetimes
+        return [inv for inv in invoices if inv.sent_at and _as_utc(inv.sent_at) <= cutoff]
