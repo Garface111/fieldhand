@@ -158,6 +158,44 @@ TOOLS = [
             "required": ["job_title_hint"],
         },
     },
+    {
+        "name": "check_email",
+        "description": "Read the contractor's inbox and summarize unread emails.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "max_results": {"type": "integer", "description": "Max emails to fetch. Default 10."},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "send_email",
+        "description": "Send an email on behalf of the contractor.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email address"},
+                "subject": {"type": "string", "description": "Email subject line"},
+                "body": {"type": "string", "description": "Email body text"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "draft_email",
+        "description": "Draft an email for contractor review before sending. Use this by default unless contractor explicitly says to send immediately.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+                "context": {"type": "string", "description": "Why this email is being drafted"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
 ]
 
 
@@ -287,6 +325,79 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         db.add(inv)
         db.commit()
         return f"Invoice queued for '{job.title}': ${amount:,.2f}. Ready to send — confirm to fire it off."
+
+    elif tool_name == "check_email":
+        contractor = memory.get_contractor()
+        if not contractor or not contractor.gmail_refresh_token:
+            return "Email not connected. Visit the dashboard to link your Gmail account."
+        import asyncio
+        from src.email_client import GmailClient
+        gmail = GmailClient(contractor.gmail_refresh_token)
+        try:
+            emails = asyncio.get_event_loop().run_until_complete(
+                gmail.get_unread(max_results=tool_input.get("max_results", 10))
+            )
+        except RuntimeError:
+            import asyncio as _asyncio
+            loop = _asyncio.new_event_loop()
+            emails = loop.run_until_complete(
+                gmail.get_unread(max_results=tool_input.get("max_results", 10))
+            )
+            loop.close()
+        if not emails:
+            return "Inbox is clear — no unread emails."
+        lines = [f"Found {len(emails)} unread email(s):\n"]
+        for e in emails:
+            lines.append(f"From: {e.sender_name}")
+            lines.append(f"Subject: {e.subject}")
+            lines.append(f"Date: {e.received_at}")
+            lines.append(f"Preview: {e.body[:200].strip()}")
+            lines.append("")
+        return "\n".join(lines)
+
+    elif tool_name == "send_email":
+        contractor = memory.get_contractor()
+        if not contractor or not contractor.gmail_refresh_token:
+            return "Email not connected. Cannot send."
+        import asyncio
+        from src.email_client import GmailClient
+        from src.audit import log as audit_log
+        gmail = GmailClient(contractor.gmail_refresh_token)
+        try:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(gmail.send(
+                to=tool_input["to"],
+                subject=tool_input["subject"],
+                body=tool_input["body"],
+            ))
+        except RuntimeError:
+            import asyncio as _asyncio
+            loop = _asyncio.new_event_loop()
+            loop.run_until_complete(gmail.send(
+                to=tool_input["to"],
+                subject=tool_input["subject"],
+                body=tool_input["body"],
+            ))
+            loop.close()
+        audit_log(db, memory.contractor_id, "email_sent",
+                  subject=f"To: {tool_input['to']} — {tool_input['subject']}",
+                  channel="email", initiated_by="agent")
+        return f"Email sent to {tool_input['to']} — Subject: {tool_input['subject']}"
+
+    elif tool_name == "draft_email":
+        # Store draft in DB as a document for review, return the draft text
+        from src.audit import log as audit_log
+        audit_log(db, memory.contractor_id, "email_drafted",
+                  subject=f"To: {tool_input['to']} — {tool_input['subject']}",
+                  detail=tool_input['body'],
+                  channel="email", initiated_by="agent")
+        return (
+            f"Draft ready:\n"
+            f"To: {tool_input['to']}\n"
+            f"Subject: {tool_input['subject']}\n"
+            f"---\n{tool_input['body']}\n---\n"
+            f"Reply SEND to send it, or tell me what to change."
+        )
 
     return f"Unknown tool: {tool_name}"
 
