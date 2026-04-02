@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #1a1a1a; }
+  .header { background: #1e3a5f; color: white; padding: 32px 40px; }
+  .header h1 { margin: 0 0 4px 0; font-size: 26px; letter-spacing: 1px; }
+  .header .tagline { font-size: 13px; opacity: 0.8; margin: 0; }
+  .header .contact { text-align: right; font-size: 13px; margin-top: -48px; }
+  .body { padding: 32px 40px; }
+  .meta-row { display: flex; justify-content: space-between; margin-bottom: 28px; }
+  .meta-block h3 { margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase;
+                    letter-spacing: 1px; color: #888; }
+  .meta-block p { margin: 0; font-size: 14px; }
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+                   color: #888; border-bottom: 2px solid #1e3a5f; padding-bottom: 4px;
+                   margin: 24px 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 8px 12px; background: #f4f6f9; font-weight: 600;
+       font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .amount { text-align: right; }
+  .totals { margin-top: 16px; }
+  .total-row { display: flex; justify-content: flex-end; padding: 6px 0; font-size: 14px; }
+  .total-row span:first-child { width: 160px; color: #555; }
+  .grand-total { font-size: 18px; font-weight: bold; color: #1e3a5f;
+                  border-top: 2px solid #1e3a5f; padding-top: 10px; margin-top: 4px; }
+  .terms { margin-top: 32px; padding: 16px; background: #f9f9f9;
+           border-left: 3px solid #1e3a5f; font-size: 13px; color: #555; }
+  .footer { margin-top: 32px; padding: 16px 40px; background: #f4f6f9;
+            font-size: 12px; color: #888; text-align: center; }
+  .badge { display: inline-block; background: #e8f0fe; color: #1e3a5f;
+           padding: 4px 10px; border-radius: 4px; font-size: 11px;
+           font-weight: 600; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>{{ business_name }}</h1>
+  <p class="tagline">{{ trade | title }} Services</p>
+  <div class="contact">
+    <p>{{ contractor_phone }}</p>
+    {% if contractor_email %}<p>{{ contractor_email }}</p>{% endif %}
+    {% if license_no %}<p>Lic #{{ license_no }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="body">
+
+  <div style="margin-bottom: 16px;">
+    <span class="badge">Estimate</span>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-block">
+      <h3>Prepared For</h3>
+      <p><strong>{{ client_name }}</strong></p>
+      {% if client_address %}<p>{{ client_address }}</p>{% endif %}
+      {% if client_phone %}<p>{{ client_phone }}</p>{% endif %}
+      {% if client_email %}<p>{{ client_email }}</p>{% endif %}
+    </div>
+    <div class="meta-block" style="text-align: right;">
+      <h3>Estimate Details</h3>
+      <p>Date: {{ date }}</p>
+      <p>Valid Until: {{ valid_until }}</p>
+      <p>Estimate #: {{ estimate_number }}</p>
+    </div>
+  </div>
+
+  <div class="section-title">Scope of Work</div>
+  <p style="font-size:14px; line-height:1.6; color:#333;">{{ description }}</p>
+
+  <div class="section-title">Line Items</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th class="amount">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in line_items %}
+      <tr>
+        <td>{{ item.description }}</td>
+        <td>{{ item.qty }}</td>
+        <td>${{ "%.2f"|format(item.unit_price) }}</td>
+        <td class="amount">${{ "%.2f"|format(item.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div class="total-row">
+      <span>Subtotal</span>
+      <span>${{ "%.2f"|format(subtotal) }}</span>
+    </div>
+    {% if tax_rate %}
+    <div class="total-row">
+      <span>Tax ({{ tax_rate }}%)</span>
+      <span>${{ "%.2f"|format(tax_amount) }}</span>
+    </div>
+    {% endif %}
+    <div class="total-row grand-total">
+      <span>TOTAL</span>
+      <span>${{ "%.2f"|format(total) }}</span>
+    </div>
+  </div>
+
+  <div class="terms">
+    <strong>Payment Terms:</strong> {{ payment_terms }}<br>
+    {% if deposit_required %}
+    <strong>Deposit Required:</strong> {{ deposit_pct }}% (${{"%.2f"|format(deposit_amount)}}) due to schedule.<br>
+    {% endif %}
+    This estimate is valid for 30 days from the date above. Prices subject to change after expiration.
+  </div>
+
+  {% if notes %}
+  <div class="section-title">Notes</div>
+  <p style="font-size:13px; color:#555;">{{ notes }}</p>
+  {% endif %}
+
+</div>
+
+<div class="footer">
+  {{ business_name }} &bull; {{ contractor_phone }}
+  {% if contractor_email %} &bull; {{ contractor_email }}{% endif %}
+  &bull; Thank you for your business!
+</div>
+
+</body>
+</html>
