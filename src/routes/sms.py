@@ -93,37 +93,98 @@ async def sms_webhook(
 
 
 async def _handle_onboarding(phone: str, body: str, db: Session) -> PlainTextResponse:
-    """Multi-step onboarding for a new contractor."""
+    """
+    Multi-step onboarding wizard.
+    Stages: start -> name -> trade -> business -> rate -> terms -> auto_followup -> done
+    """
     state = _onboarding_state.get(phone, {"stage": "start"})
 
     if state["stage"] == "start":
         _onboarding_state[phone] = {"stage": "ask_name"}
         return twiml_reply(
-            "Hey! I'm FIELDHAND, your business assistant. "
-            "I handle invoices, expenses, client follow-ups, and more. "
-            "What's your name?"
+            "Hey! I'm FIELDHAND — your AI business assistant. "
+            "I handle your invoices, expenses, jobs, and client follow-ups. "
+            "Takes 60 seconds to set up.\n\n"
+            "What's your first and last name?"
         )
 
     elif state["stage"] == "ask_name":
-        state["name"] = body
+        state["name"] = body.strip().title()
         state["stage"] = "ask_trade"
         _onboarding_state[phone] = state
-        return twiml_reply(f"Nice to meet you, {body}! What trade are you in? (e.g. electrician, plumber, HVAC, general contractor)")
+        first = state["name"].split()[0]
+        return twiml_reply(
+            f"Nice to meet you, {first}! "
+            f"What trade are you in?\n"
+            f"(e.g. electrician, plumber, HVAC, carpenter, general contractor)"
+        )
 
     elif state["stage"] == "ask_trade":
-        state["trade"] = body
+        state["trade"] = body.strip().lower()
         state["stage"] = "ask_business"
         _onboarding_state[phone] = state
-        return twiml_reply(f"Got it. What's your business name? (or just your name if you don't have one)")
+        return twiml_reply(
+            "What's your business name?\n"
+            "(or just your name if you're solo)"
+        )
 
     elif state["stage"] == "ask_business":
-        state["business_name"] = body
-        # Create the contractor record
+        state["business_name"] = body.strip()
+        state["stage"] = "ask_rate"
+        _onboarding_state[phone] = state
+        return twiml_reply(
+            "What's your labor rate per hour?\n"
+            "(just the number — e.g. 95)"
+        )
+
+    elif state["stage"] == "ask_rate":
+        try:
+            rate = float(body.strip().replace("$", "").replace("/hr", "").strip())
+        except ValueError:
+            return twiml_reply("Just send the number — e.g. 95 or 125")
+        state["labor_rate"] = rate
+        state["stage"] = "ask_terms"
+        _onboarding_state[phone] = state
+        return twiml_reply(
+            "Payment terms? This goes on your invoices.\n"
+            "Reply:\n"
+            "1 — Net 15 (pay within 15 days)\n"
+            "2 — Net 30 (pay within 30 days)\n"
+            "3 — Due on receipt\n"
+            "4 — 50% deposit required"
+        )
+
+    elif state["stage"] == "ask_terms":
+        terms_map = {
+            "1": "Net 15", "net 15": "Net 15",
+            "2": "Net 30", "net 30": "Net 30",
+            "3": "Due on Receipt", "due on receipt": "Due on Receipt",
+            "4": "50% Deposit Required", "50%": "50% Deposit Required",
+        }
+        terms = terms_map.get(body.strip().lower(), "Net 15")
+        state["invoice_terms"] = terms
+        state["stage"] = "ask_auto_followup"
+        _onboarding_state[phone] = state
+        return twiml_reply(
+            f"Got it — {terms}.\n\n"
+            "Last question: should I automatically follow up "
+            "on unpaid invoices for you?\n"
+            "Reply YES or NO"
+        )
+
+    elif state["stage"] == "ask_auto_followup":
+        auto = body.strip().upper().startswith("Y")
+        state["auto_followup"] = auto
+
+        # Create the contractor
         contractor = Contractor(
             name=state["name"],
             phone=phone,
             trade=state["trade"],
             business_name=state["business_name"],
+            labor_rate=state.get("labor_rate", 85.0),
+            markup_pct=20.0,
+            invoice_terms=state.get("invoice_terms", "Net 15"),
             onboarding_complete=True,
         )
         db.add(contractor)
@@ -131,11 +192,23 @@ async def _handle_onboarding(phone: str, body: str, db: Session) -> PlainTextRes
         db.refresh(contractor)
         del _onboarding_state[phone]
 
+        first = contractor.name.split()[0]
+        auto_msg = "I'll handle invoice follow-ups automatically." if auto else "I'll flag overdue invoices for you to review."
+
+        # Build the dashboard + email connect URL
+        base_url = os.getenv("APP_BASE_URL", "https://fieldhand-ai.loca.lt")
+        email_url = f"{base_url}/email/connect/{contractor.id}"
+
         return twiml_reply(
-            f"You're all set, {contractor.name}! "
-            f"I'm your business assistant now. "
-            f"Text me anything — add a job, log an expense, send an invoice, or just ask how much you're owed. "
-            f"I've got your back."
+            f"You're all set, {first}! 🎉\n\n"
+            f"Here's what you can text me:\n"
+            f"• \"New job, [client], [address], [description]\"\n"
+            f"• \"Log $340 materials, Mitchell job\"\n"
+            f"• \"How much do I have outstanding?\"\n"
+            f"• \"List my jobs\"\n\n"
+            f"{auto_msg}\n\n"
+            f"Want me to handle your email too? Connect it here:\n"
+            f"{email_url}"
         )
 
     return twiml_reply("Something went wrong. Text 'hi' to start over.")

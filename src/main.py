@@ -42,11 +42,13 @@ from src.routes.sms import router as sms_router
 from src.routes.stripe_webhook import router as stripe_router
 from src.routes.dashboard import router as dashboard_router
 from src.routes.consent import router as consent_router
+from src.routes.gmail_oauth import router as gmail_router
 
 app.include_router(sms_router)
 app.include_router(stripe_router)
 app.include_router(dashboard_router)
 app.include_router(consent_router)
+app.include_router(gmail_router)
 
 
 @app.get("/status")

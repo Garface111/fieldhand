@@ -6,8 +6,11 @@ from src.models.invoice import Invoice, InvoiceStatus
 from src.models.message import Message
 from src.models.document import Document
 from src.models.consent import Consent
+from src.models.magic_link import MagicLink
+from src.models.audit_log import AuditLog
 
 __all__ = [
     "Contractor", "Client", "Job", "JobStatus",
-    "Expense", "Invoice", "InvoiceStatus", "Message", "Document", "Consent"
+    "Expense", "Invoice", "InvoiceStatus", "Message", "Document",
+    "Consent", "MagicLink", "AuditLog"
 ]
