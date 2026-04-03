@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y \
     libpangocairo-1.0-0 \
     libpangoft2-1.0-0 \
     libcairo2 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-xlib-2.0-0 \
     libffi-dev \
     libglib2.0-0 \
     fontconfig \
