@@ -9,13 +9,47 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from src.database import engine, Base
 import src.models  # noqa — register all models
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables on startup
     Base.metadata.create_all(bind=engine)
+
+    # ── Start background scheduler ────────────────────────────────────────────
+    scheduler = BackgroundScheduler(timezone="UTC")
+
+    # Proactive pulse — every 2 hours, all contractors
+    from src.tasks.pulse import run_pulse_all
+    scheduler.add_job(run_pulse_all, IntervalTrigger(hours=2), id="pulse",
+                      max_instances=1, misfire_grace_time=300)
+
+    # Morning briefing — 7am UTC (2am CT, reasonable for early risers)
+    from src.tasks.monitoring import run_morning_briefings
+    scheduler.add_job(run_morning_briefings, CronTrigger(hour=12, minute=0),
+                      id="morning_briefing", max_instances=1)
+
+    # EOD summary — 11pm UTC (6pm CT)
+    from src.tasks.monitoring import run_eod_summaries
+    scheduler.add_job(run_eod_summaries, CronTrigger(hour=23, minute=0),
+                      id="eod_summary", max_instances=1)
+
+    # Dunning — twice daily (9am and 3pm UTC)
+    from src.tasks.monitoring import run_dunning
+    scheduler.add_job(run_dunning, CronTrigger(hour="9,15", minute=0),
+                      id="dunning", max_instances=1)
+
+    scheduler.start()
+    print("[Scheduler] Started — pulse every 2h, briefing 7am CT, EOD 6pm CT, dunning 2x/day")
+    # ─────────────────────────────────────────────────────────────────────────
+
     yield
+
+    scheduler.shutdown(wait=False)
+    print("[Scheduler] Stopped")
 
 
 app = FastAPI(
