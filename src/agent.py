@@ -440,6 +440,105 @@ TOOLS = [
         },
     },
     {
+        "name": "schedule_job",
+        "description": "Set a start date (and optional end date) for a job. The agent will send a reminder the day before. Use when contractor says 'schedule Smith for Monday' or 'set the Johnson job for April 15'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_title_hint": {"type": "string"},
+                "start_date": {"type": "string", "description": "Start date e.g. 'Monday', 'April 15', '2026-04-15'"},
+                "end_date": {"type": "string", "description": "Optional end/completion date"},
+                "notes": {"type": "string"},
+            },
+            "required": ["job_title_hint", "start_date"],
+        },
+    },
+    {
+        "name": "get_schedule",
+        "description": "Show upcoming scheduled jobs for the next N days. Use when contractor asks 'what's on my schedule' or 'what do I have this week'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {"type": "integer", "description": "How many days to look ahead, default 14"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "order_materials",
+        "description": "Email a material order to a supply house on behalf of the contractor. Stages the email for approval before sending. Use when contractor says 'order this from [supplier]' or 'send the order to [supplier]'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_title_hint": {"type": "string"},
+                "supplier_name": {"type": "string", "description": "Name of the supply house"},
+                "supplier_email": {"type": "string", "description": "Supply house email address"},
+                "materials": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "description": {"type": "string"},
+                            "qty": {"type": "number"},
+                            "unit": {"type": "string"},
+                            "part_number": {"type": "string"},
+                        },
+                        "required": ["description", "qty"],
+                    },
+                },
+                "pickup_date": {"type": "string", "description": "When contractor needs it ready"},
+                "account_number": {"type": "string", "description": "Contractor's account number at the supplier"},
+                "notes": {"type": "string"},
+            },
+            "required": ["supplier_email", "materials"],
+        },
+    },
+    {
+        "name": "add_subcontractor",
+        "description": "Add a subcontractor to your roster — a person or company you hire for specific trade work (drywall, concrete, painting, etc).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "trade": {"type": "string", "description": "e.g. drywall, concrete, plumbing, painting"},
+                "phone": {"type": "string"},
+                "email": {"type": "string"},
+                "company_name": {"type": "string"},
+                "rate": {"type": "number", "description": "Their rate (hourly or per-project)"},
+                "rate_type": {"type": "string", "enum": ["hourly", "project", "sqft"]},
+                "notes": {"type": "string"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "list_subcontractors",
+        "description": "List your subcontractors, optionally filtered by trade.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "trade": {"type": "string", "description": "Filter by trade, e.g. 'drywall'"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "send_work_order",
+        "description": "Send a work order to a subcontractor for a specific job. Stages the email for your approval before sending.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "subcontractor_name": {"type": "string"},
+                "job_title_hint": {"type": "string"},
+                "scope": {"type": "string", "description": "What work they need to do"},
+                "start_date": {"type": "string"},
+                "rate": {"type": "number", "description": "What you're paying them for this job"},
+                "notes": {"type": "string", "description": "Any special instructions"},
+            },
+            "required": ["subcontractor_name", "job_title_hint", "scope"],
+        },
+    },
+    {
         "name": "update_agent_memory",
         "description": "Save a note to your own memory about this contractor, a client, a pattern you've noticed, or anything worth remembering for future conversations. Use this proactively whenever you learn something useful. Also use this to store personal details the contractor shares (family, preferences, habits).",
         "input_schema": {
@@ -725,6 +824,19 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
             return format_block_message(review_result, "invoice")
         # ────────────────────────────────────────────────────────────────────
 
+        # Try to generate Stripe payment link first
+        payment_url = None
+        stripe_invoice_id = None
+        try:
+            import os as _os
+            if _os.getenv("STRIPE_SECRET_KEY"):
+                from src.documents.invoice import create_invoice as stripe_create_invoice
+                stripe_result = stripe_create_invoice(job=job, amount=amount, db=db)
+                payment_url = stripe_result.get("payment_url")
+                stripe_invoice_id = stripe_result.get("invoice_id")
+        except Exception as _se:
+            pass  # Fall back to plain email invoice
+
         # Record invoice in DB
         from src.models.invoice import Invoice, InvoiceStatus
         inv = db.query(Invoice).filter(
@@ -737,38 +849,53 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         inv.status = InvoiceStatus.SENT
         inv.sent_at = datetime.now(timezone.utc)
         inv.amount = amount
+        if stripe_invoice_id:
+            inv.stripe_invoice_id = stripe_invoice_id
         db.commit()
 
+        # Build email body — include payment link if we have one
+        client_first = client_obj.name.split()[0] if client_obj else "there"
+        if payment_url:
+            body = (
+                f"Hi {client_first},\n\n"
+                f"Your invoice for '{job.title}' is ready.\n\n"
+                f"Amount Due: ${amount:,.2f}\n"
+                f"Terms: {contractor.invoice_terms if contractor else 'Net 15'}\n\n"
+                f"Pay online here:\n{payment_url}\n\n"
+                f"Or reply to arrange payment.\n\n"
+                f"Thanks,\n{contractor.name}\n{contractor.business_name}"
+            )
+        else:
+            body = (
+                f"Hi {client_first},\n\n"
+                f"Your invoice for '{job.title}' is ready.\n\n"
+                f"Amount Due: ${amount:,.2f}\n"
+                f"Terms: {contractor.invoice_terms if contractor else 'Net 15'}\n\n"
+                f"Please reply to arrange payment or call {contractor.phone}.\n\n"
+                f"Thanks,\n{contractor.name}\n{contractor.business_name}"
+            )
+
+        # Stage for contractor approval (email approval rule)
         if to_email and contractor and contractor.gmail_refresh_token:
-            try:
-                from src.email_client import GmailClient
-                gmail = GmailClient(contractor.gmail_refresh_token)
-                client_first = client_obj.name.split()[0] if client_obj else "there"
-                body = (
-                    f"Hi {client_first},\n\n"
-                    f"Your invoice for '{job.title}' is ready.\n\n"
-                    f"Amount Due: ${amount:,.2f}\n"
-                    f"Terms: {contractor.invoice_terms}\n\n"
-                    f"Please reply to arrange payment or call {contractor.phone}.\n\n"
-                    f"Thanks,\n{contractor.name}\n{contractor.business_name}"
-                )
-                loop = asyncio.get_event_loop()
-                try:
-                    loop.run_until_complete(gmail.send(
-                        to=to_email,
-                        subject=f"Invoice — {job.title} — ${amount:,.2f}",
-                        body=body,
-                    ))
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    loop.run_until_complete(gmail.send(to=to_email, subject=f"Invoice — {job.title} — ${amount:,.2f}", body=body))
-                    loop.close()
-                audit_log(db, memory.contractor_id, "invoice_sent",
-                          subject=f"Invoice for '{job.title}' to {to_email} — ${amount:,.2f}",
-                          channel="email", initiated_by="agent")
-                return f"Invoice sent to {to_email} — ${amount:,.2f}."
-            except Exception as e:
-                return f"Invoice recorded but email failed: {e}. Send manually to {to_email}."
+            import json as _json
+            contractor.pending_email = _json.dumps({
+                "to": to_email,
+                "subject": f"Invoice — {job.title} — ${amount:,.2f}",
+                "body": body,
+                "pdf_path": None,
+            })
+            db.commit()
+            audit_log(db, memory.contractor_id, "email_staged",
+                      subject=f"Invoice pending approval: {job.title} → {to_email}",
+                      channel="agent", initiated_by="agent")
+            pay_note = f"\n\nPayment link: {payment_url}" if payment_url else ""
+            return (
+                f"Invoice ready — ${amount:,.2f} for {client_obj.name if client_obj else 'client'}.{pay_note}\n\n"
+                f"To: {to_email}\n"
+                f"Subject: Invoice — {job.title} — ${amount:,.2f}\n\n"
+                f"{body[:280]}\n\n"
+                f"Reply YES to send, or tell me what to change."
+            )
         return f"Invoice recorded (${amount:,.2f}) but no client email on file. What's {client_obj.name if client_obj else 'the client'}'s email?"
 
     elif tool_name == "send_quote_to_client":
@@ -1205,6 +1332,226 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
                       channel="agent", initiated_by="agent")
             return f"Profile updated: {', '.join(saved)}."
         return "No fields provided to update."
+
+    elif tool_name == "schedule_job":
+        job = memory.find_job(tool_input["job_title_hint"])
+        if not job:
+            return f"Could not find job matching '{tool_input['job_title_hint']}'."
+
+        from dateutil import parser as dateparser
+        from dateutil.relativedelta import relativedelta
+        now = datetime.now(timezone.utc)
+
+        def parse_date(s: str) -> datetime | None:
+            try:
+                # Handle relative day names
+                days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+                s_lower = s.lower().strip()
+                if s_lower in days:
+                    target = days.index(s_lower)
+                    current = now.weekday()
+                    delta = (target - current) % 7 or 7
+                    d = now + timedelta(days=delta)
+                    return d.replace(hour=8, minute=0, second=0, microsecond=0)
+                if s_lower in ("tomorrow",):
+                    return (now + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+                if s_lower in ("monday next week", "next monday"):
+                    delta = (0 - now.weekday()) % 7 + 7
+                    return (now + timedelta(days=delta)).replace(hour=8, minute=0, second=0, microsecond=0)
+                return dateparser.parse(s, fuzzy=True).replace(tzinfo=timezone.utc)
+            except Exception:
+                return None
+
+        start = parse_date(tool_input["start_date"])
+        if not start:
+            return f"Couldn't parse '{tool_input['start_date']}' as a date. Try 'Monday' or 'April 15'."
+
+        job.scheduled_start = start
+        job.reminder_sent = False
+        if tool_input.get("end_date"):
+            end = parse_date(tool_input["end_date"])
+            if end:
+                job.scheduled_end = end
+        if tool_input.get("notes"):
+            job.notes = (job.notes or "") + f"\n[Schedule note] {tool_input['notes']}"
+        db.commit()
+
+        end_str = f" → {job.scheduled_end.strftime('%b %d')}" if job.scheduled_end else ""
+        return (
+            f"Scheduled '{job.title}' for {start.strftime('%A, %B %d')}{end_str}. "
+            f"I'll remind you the day before."
+        )
+
+    elif tool_name == "get_schedule":
+        days_ahead = tool_input.get("days_ahead", 14)
+        now = datetime.now(timezone.utc)
+        cutoff = now + timedelta(days=days_ahead)
+
+        jobs = (
+            db.query(Job)
+            .filter(
+                Job.contractor_id == memory.contractor_id,
+                Job.scheduled_start >= now,
+                Job.scheduled_start <= cutoff,
+                Job.status.notin_([JobStatus.CANCELLED, JobStatus.PAID]),
+            )
+            .order_by(Job.scheduled_start)
+            .all()
+        )
+
+        if not jobs:
+            return f"Nothing scheduled in the next {days_ahead} days."
+
+        lines = [f"Schedule — next {days_ahead} days:"]
+        for j in jobs:
+            client_name = j.client.name if j.client else "No client"
+            end_str = f" → {j.scheduled_end.strftime('%b %d')}" if j.scheduled_end else ""
+            lines.append(
+                f"  {j.scheduled_start.strftime('%a %b %d')}{end_str}  "
+                f"[{j.status.value.upper()}]  {j.title} — {client_name}"
+            )
+        return "\n".join(lines)
+
+    elif tool_name == "order_materials":
+        job = memory.find_job(tool_input.get("job_title_hint", "")) if tool_input.get("job_title_hint") else None
+        contractor = memory.get_contractor()
+        materials = tool_input["materials"]
+        supplier = tool_input.get("supplier_name", "Supply House")
+        supplier_email = tool_input["supplier_email"]
+        pickup = tool_input.get("pickup_date", "ASAP")
+        acct = tool_input.get("account_number") or ""
+        notes = tool_input.get("notes", "")
+
+        job_ref = job.title if job else "General order"
+        job_addr = job.address if job else ""
+
+        lines = []
+        for m in materials:
+            unit = m.get("unit", "ea")
+            pn = f" (P/N: {m['part_number']})" if m.get("part_number") else ""
+            lines.append(f"  {m['qty']} {unit}  —  {m['description']}{pn}")
+
+        acct_line = f"\nAccount #: {acct}" if acct else ""
+        addr_line = f"\nDelivery/Job Address: {job_addr}" if job_addr else ""
+        notes_line = f"\nNotes: {notes}" if notes else ""
+
+        body = (
+            f"Hello {supplier},\n\n"
+            f"Please prepare the following order for will-call pickup:\n\n"
+            f"Contractor: {contractor.name} — {contractor.business_name or ''}{acct_line}\n"
+            f"Job Reference: {job_ref}{addr_line}\n"
+            f"Needed by: {pickup}\n\n"
+            f"MATERIALS:\n" + "\n".join(lines) +
+            f"{notes_line}\n\n"
+            f"Please confirm receipt and readiness.\n\n"
+            f"{contractor.name}\n{contractor.phone}"
+        )
+
+        import json as _json
+        contractor.pending_email = _json.dumps({
+            "to": supplier_email,
+            "subject": f"Material Order — {job_ref} — {pickup}",
+            "body": body,
+            "pdf_path": None,
+        })
+        db.commit()
+        audit_log(db, memory.contractor_id, "email_staged",
+                  subject=f"Material order pending approval: {len(materials)} items → {supplier}",
+                  channel="agent", initiated_by="agent")
+        return (
+            f"Order ready for {supplier} ({len(materials)} items, needed {pickup}):\n\n"
+            f"To: {supplier_email}\n\n"
+            f"MATERIALS:\n" + "\n".join(lines) +
+            f"\n\nReply YES to send, or tell me what to change."
+        )
+
+    elif tool_name == "add_subcontractor":
+        from src.models.subcontractor import Subcontractor
+        sub = Subcontractor(
+            contractor_id=memory.contractor_id,
+            name=tool_input["name"],
+            trade=tool_input.get("trade"),
+            phone=tool_input.get("phone"),
+            email=tool_input.get("email"),
+            company_name=tool_input.get("company_name"),
+            rate=tool_input.get("rate"),
+            rate_type=tool_input.get("rate_type", "project"),
+            notes=tool_input.get("notes"),
+        )
+        db.add(sub)
+        db.commit()
+        missing = [f for f, v in [("email", sub.email), ("phone", sub.phone)] if not v]
+        miss_str = f" Still need: {', '.join(missing)}." if missing else ""
+        return f"Added {sub.name} ({sub.trade or 'sub'}) to your roster.{miss_str}"
+
+    elif tool_name == "list_subcontractors":
+        from src.models.subcontractor import Subcontractor
+        q = db.query(Subcontractor).filter(Subcontractor.contractor_id == memory.contractor_id)
+        if tool_input.get("trade"):
+            q = q.filter(Subcontractor.trade.ilike(f"%{tool_input['trade']}%"))
+        subs = q.order_by(Subcontractor.name).all()
+        if not subs:
+            return "No subcontractors on file yet. Add one with 'Add sub: [name], [trade], [phone]'."
+        lines = []
+        for s in subs:
+            rate_str = f" — ${s.rate:,.0f}/{s.rate_type}" if s.rate else ""
+            contact = s.phone or s.email or "no contact"
+            lines.append(f"  {s.name} ({s.trade or 'general'}){rate_str} — {contact}")
+        return "Your subcontractors:\n" + "\n".join(lines)
+
+    elif tool_name == "send_work_order":
+        from src.models.subcontractor import Subcontractor
+        # Find sub
+        sub = (
+            db.query(Subcontractor)
+            .filter(
+                Subcontractor.contractor_id == memory.contractor_id,
+                Subcontractor.name.ilike(f"%{tool_input['subcontractor_name']}%")
+            ).first()
+        )
+        if not sub:
+            return f"No subcontractor matching '{tool_input['subcontractor_name']}'. Add them first."
+        if not sub.email:
+            return f"{sub.name} has no email on file. What's their email?"
+
+        job = memory.find_job(tool_input["job_title_hint"])
+        if not job:
+            return f"Could not find job matching '{tool_input['job_title_hint']}'."
+
+        contractor = memory.get_contractor()
+        rate_str = f"\nYour Rate: ${tool_input['rate']:,.0f}" if tool_input.get("rate") else ""
+        start_str = f"\nStart Date: {tool_input['start_date']}" if tool_input.get("start_date") else ""
+        notes_str = f"\nNotes: {tool_input['notes']}" if tool_input.get("notes") else ""
+
+        body = (
+            f"Hi {sub.name.split()[0]},\n\n"
+            f"I have a job for you. Here are the details:\n\n"
+            f"Job: {job.title}\n"
+            f"Address: {job.address or 'TBD'}\n"
+            f"Scope: {tool_input['scope']}"
+            f"{start_str}{rate_str}{notes_str}\n\n"
+            f"Let me know if you can take this on.\n\n"
+            f"{contractor.name}\n{contractor.business_name or ''}\n{contractor.phone}"
+        )
+
+        import json as _json
+        contractor.pending_email = _json.dumps({
+            "to": sub.email,
+            "subject": f"Work Order — {job.title}",
+            "body": body,
+            "pdf_path": None,
+        })
+        db.commit()
+        audit_log(db, memory.contractor_id, "email_staged",
+                  subject=f"Work order pending approval: {job.title} → {sub.name}",
+                  channel="agent", initiated_by="agent")
+        return (
+            f"Work order ready for {sub.name}:\n\n"
+            f"To: {sub.email}\n"
+            f"Subject: Work Order — {job.title}\n\n"
+            f"{body[:350]}\n\n"
+            f"Reply YES to send, or tell me what to change."
+        )
 
     elif tool_name == "update_agent_memory":
         contractor = memory.get_contractor()

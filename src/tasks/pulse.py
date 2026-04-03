@@ -251,6 +251,49 @@ def run_pulse_for_contractor(contractor: Contractor, db: Session) -> dict:
     }
 
 
+def run_schedule_reminders():
+    """
+    Send day-before reminders for jobs scheduled tomorrow.
+    Called once daily by the scheduler.
+    """
+    from src.models.job import Job, JobStatus
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        tomorrow_start = (now + timedelta(hours=20)).replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_end = tomorrow_start + timedelta(days=1)
+
+        jobs = (
+            db.query(Job)
+            .filter(
+                Job.scheduled_start >= tomorrow_start,
+                Job.scheduled_start < tomorrow_end,
+                Job.reminder_sent == False,
+                Job.status.notin_([JobStatus.CANCELLED, JobStatus.PAID]),
+            )
+            .all()
+        )
+
+        for job in jobs:
+            contractor_id = job.contractor_id
+            contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+            if not contractor:
+                continue
+            client_name = job.client.name if job.client else "No client"
+            address = job.address or ""
+            msg = (
+                f"Tomorrow: {job.title} — {client_name}\n"
+                f"{address}\n"
+                f"Starts: {job.scheduled_start.strftime('%I:%M %p')}"
+            ).strip()
+            send_sms(contractor.phone, msg)
+            job.reminder_sent = True
+            db.commit()
+            print(f"[Schedule Reminder] {contractor.name}: {job.title}")
+    finally:
+        db.close()
+
+
 def run_pulse_all():
     """
     Entry point — run the pulse for every active contractor.

@@ -47,6 +47,10 @@ class Job(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Scheduling fields
+    scheduled_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reminder_sent: Mapped[bool] = mapped_column(default=False)  # day-before reminder
 
     contractor: Mapped["Contractor"] = relationship("Contractor", back_populates="jobs", foreign_keys=[contractor_id])  # noqa
     client: Mapped["Client | None"] = relationship("Client", back_populates="jobs")  # noqa

@@ -1,4 +1,5 @@
 from src.models.contractor import Contractor
+from src.models.subcontractor import Subcontractor
 from src.models.client import Client
 from src.models.job import Job, JobStatus
 from src.models.expense import Expense

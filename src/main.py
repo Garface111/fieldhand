@@ -42,6 +42,11 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(run_dunning, CronTrigger(hour="9,15", minute=0),
                       id="dunning", max_instances=1)
 
+    # Schedule reminders — 6pm UTC daily (1pm CT — day-before reminder for tomorrow's jobs)
+    from src.tasks.pulse import run_schedule_reminders
+    scheduler.add_job(run_schedule_reminders, CronTrigger(hour=18, minute=0),
+                      id="schedule_reminders", max_instances=1)
+
     scheduler.start()
     print("[Scheduler] Started — pulse every 2h, briefing 7am CT, EOD 6pm CT, dunning 2x/day")
     # ─────────────────────────────────────────────────────────────────────────
