@@ -23,6 +23,7 @@ from src.router import classify, get_tools_for_categories, TOOL_CATEGORIES
 from src.cost_tracker import MessageCost
 from src.tools.analytics import query_business as _query_business, safe_eval
 from src.tools.web_search import web_search_sync
+from src.outbound_review import review as outbound_review, format_block_message
 
 load_dotenv()
 
@@ -655,6 +656,23 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         contractor = memory.get_contractor()
         to_email = tool_input.get("client_email") or (client_obj.email if client_obj else None)
 
+        # ── Outbound review ──────────────────────────────────────────────────
+        review_result = outbound_review(
+            action_type="invoice",
+            recipient=to_email or "unknown",
+            content={"job_title": job.title, "amount": amount,
+                     "terms": contractor.invoice_terms if contractor else "N/A",
+                     "body_preview": f"Invoice for {job.title} — ${amount:,.2f}"},
+            contractor_name=contractor.name if contractor else "",
+            client_name=client_obj.name if client_obj else "",
+        )
+        audit_log(db, memory.contractor_id, "outbound_review",
+                  subject=f"Invoice for '{job.title}' — {'APPROVED' if review_result.approved else 'BLOCKED'}",
+                  detail=review_result.raw, channel="agent", initiated_by="agent")
+        if not review_result.approved:
+            return format_block_message(review_result, "invoice")
+        # ────────────────────────────────────────────────────────────────────
+
         # Record invoice in DB
         from src.models.invoice import Invoice, InvoiceStatus
         inv = db.query(Invoice).filter(
@@ -711,6 +729,21 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         total = sum(i["amount"] for i in line_items)
         client_obj = job.client
         contractor = memory.get_contractor()
+
+        # ── Outbound review ──────────────────────────────────────────────────
+        review_result = outbound_review(
+            action_type="quote",
+            recipient=tool_input.get("client_email") or (client_obj.email if client_obj else "unknown"),
+            content={"job_title": job.title, "total": total, "line_items": line_items, "notes": tool_input.get("notes")},
+            contractor_name=contractor.name if contractor else "",
+            client_name=client_obj.name if client_obj else "",
+        )
+        audit_log(db, memory.contractor_id, "outbound_review",
+                  subject=f"Quote for '{job.title}' — {'APPROVED' if review_result.approved else 'BLOCKED'}",
+                  detail=review_result.raw, channel="agent", initiated_by="agent")
+        if not review_result.approved:
+            return format_block_message(review_result, "quote")
+        # ────────────────────────────────────────────────────────────────────
 
         # Generate PDF
         from src.documents.quote import generate_quote
@@ -785,6 +818,25 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         contractor = memory.get_contractor()
         line_items = tool_input["line_items"]
         co_total = sum(i["amount"] for i in line_items)
+        revised_total_preview = (job.quoted_amount or 0) + co_total
+
+        # ── Outbound review ──────────────────────────────────────────────────
+        client_obj = job.client
+        review_result = outbound_review(
+            action_type="change_order",
+            recipient=client_obj.email if client_obj else "unknown",
+            content={"job_title": job.title, "reason": tool_input["reason"],
+                     "co_total": co_total, "revised_total": revised_total_preview,
+                     "line_items": line_items},
+            contractor_name=contractor.name if contractor else "",
+            client_name=client_obj.name if client_obj else "",
+        )
+        audit_log(db, memory.contractor_id, "outbound_review",
+                  subject=f"Change order for '{job.title}' — {'APPROVED' if review_result.approved else 'BLOCKED'}",
+                  detail=review_result.raw, channel="agent", initiated_by="agent")
+        if not review_result.approved:
+            return format_block_message(review_result, "change order")
+        # ────────────────────────────────────────────────────────────────────
 
         from src.documents.change_order import generate_change_order
         pdf_path, co_number, revised_total = generate_change_order(
@@ -1000,6 +1052,21 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         contractor = memory.get_contractor()
         if not contractor or not contractor.gmail_refresh_token:
             return "Email not connected."
+
+        # ── Outbound review ──────────────────────────────────────────────────
+        _rev = outbound_review(
+            action_type="email",
+            recipient=tool_input["to"],
+            content={"subject": tool_input["subject"], "body": tool_input["body"]},
+            contractor_name=contractor.name if contractor else "",
+        )
+        audit_log(db, memory.contractor_id, "outbound_review",
+                  subject=f"Email to {tool_input['to']} — {'APPROVED' if _rev.approved else 'BLOCKED'}",
+                  detail=_rev.raw, channel="agent", initiated_by="agent")
+        if not _rev.approved:
+            return format_block_message(_rev, "email")
+        # ────────────────────────────────────────────────────────────────────
+
         from src.email_client import GmailClient
         gmail = GmailClient(contractor.gmail_refresh_token)
         try:
@@ -1023,6 +1090,21 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
         contractor = memory.get_contractor()
         if not contractor or not contractor.gmail_refresh_token:
             return f"Email not connected. Can't send to {tool_input['to']}."
+
+        # ── Outbound review ──────────────────────────────────────────────────
+        _rev2 = outbound_review(
+            action_type="email",
+            recipient=tool_input["to"],
+            content={"subject": tool_input["subject"], "body": tool_input["body"]},
+            contractor_name=contractor.name if contractor else "",
+        )
+        audit_log(db, memory.contractor_id, "outbound_review",
+                  subject=f"Draft email to {tool_input['to']} — {'APPROVED' if _rev2.approved else 'BLOCKED'}",
+                  detail=_rev2.raw, channel="agent", initiated_by="agent")
+        if not _rev2.approved:
+            return format_block_message(_rev2, "email")
+        # ────────────────────────────────────────────────────────────────────
+
         from src.email_client import GmailClient
         gmail = GmailClient(contractor.gmail_refresh_token)
         try:
