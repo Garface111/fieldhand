@@ -50,6 +50,18 @@ class Contractor(Base):
     # Context pinning — active job the agent assumes follow-ups belong to
     pinned_job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"), nullable=True)
 
+    # Agent self-knowledge — updatable by the agent at any time
+    agent_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # e.g. "Client Smith always pays late. Ford prefers quotes rounded to nearest $50."
+
+    # Contractor-set behavior rules — what the contractor has asked the agent to do/not do
+    custom_rules: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # e.g. "Always add 10% buffer to material estimates. Never send invoices on Sundays."
+
+    # Personal context — things the contractor has shared about themselves
+    persona_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # e.g. "Has a bad knee — prefers jobs under 2 stories. Wife's name is Maria."
+
     clients: Mapped[list["Client"]] = relationship("Client", back_populates="contractor")  # noqa
     jobs: Mapped[list["Job"]] = relationship("Job", back_populates="contractor", foreign_keys="Job.contractor_id")  # noqa
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="contractor")  # noqa

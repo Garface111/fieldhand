@@ -79,9 +79,20 @@ Current business snapshot:
 
 Today's date: {today}
 
+Your personal notes (things you've observed and remembered):
+{agent_notes}
+
+Behavior rules set by this contractor (follow these exactly):
+{custom_rules}
+
 When the contractor asks you to do something, use the available tools to actually do it.
 After using a tool, confirm what you did in plain language.
 If you need more info to complete a task, ask one focused question.
+
+When the contractor tells you to always/never do something, or sets a preference,
+immediately call update_behavior_rules to save it. Don't just acknowledge it — save it.
+When you learn something worth remembering (a pattern, a preference, a personal detail),
+call update_agent_memory to store it. You have a persistent memory — use it.
 """
 
 # ─────────────────────────────────────────────────────────────────────────── #
@@ -418,6 +429,39 @@ TOOLS = [
                 "context": {"type": "string"},
             },
             "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "update_agent_memory",
+        "description": "Save a note to your own memory about this contractor, a client, a pattern you've noticed, or anything worth remembering for future conversations. Use this proactively whenever you learn something useful. Also use this to store personal details the contractor shares (family, preferences, habits).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "note": {"type": "string", "description": "The note to save. Be specific and concise."},
+                "category": {
+                    "type": "string",
+                    "enum": ["business", "client", "personal", "pattern", "reminder"],
+                    "description": "What kind of note this is."
+                },
+            },
+            "required": ["note"],
+        },
+    },
+    {
+        "name": "update_behavior_rules",
+        "description": "Update the rules that govern how you behave for this contractor. Use this when the contractor tells you to always/never do something, change how you work, or set a preference. Examples: 'always add 15% buffer to estimates', 'never send emails on weekends', 'round all quotes to nearest $100'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rule": {"type": "string", "description": "The new rule or preference to add or update."},
+                "action": {
+                    "type": "string",
+                    "enum": ["add", "remove", "replace_all"],
+                    "description": "add: append to existing rules. remove: delete a specific rule. replace_all: overwrite all rules."
+                },
+                "rules_text": {"type": "string", "description": "Full rules text (required for replace_all)."},
+            },
+            "required": ["rule", "action"],
         },
     },
     {
@@ -1146,6 +1190,51 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
             return f"Profile updated: {', '.join(saved)}."
         return "No fields provided to update."
 
+    elif tool_name == "update_agent_memory":
+        contractor = memory.get_contractor()
+        if not contractor:
+            return "Contractor not found."
+        note = tool_input["note"]
+        category = tool_input.get("category", "business")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        entry = f"[{timestamp}][{category}] {note}"
+        existing = contractor.agent_notes or ""
+        contractor.agent_notes = (existing + "\n" + entry).strip()
+        db.commit()
+        audit_log(db, memory.contractor_id, "agent_memory_updated",
+                  subject=f"Note saved [{category}]", detail=note,
+                  channel="agent", initiated_by="agent")
+        return f"Noted: {note}"
+
+    elif tool_name == "update_behavior_rules":
+        contractor = memory.get_contractor()
+        if not contractor:
+            return "Contractor not found."
+        action = tool_input["action"]
+        rule = tool_input.get("rule", "")
+        existing = contractor.custom_rules or ""
+
+        if action == "add":
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            entry = f"- [{timestamp}] {rule}"
+            contractor.custom_rules = (existing + "\n" + entry).strip()
+            result = f"Rule added: {rule}"
+        elif action == "remove":
+            lines = [l for l in existing.split("\n") if rule.lower() not in l.lower()]
+            contractor.custom_rules = "\n".join(lines).strip()
+            result = f"Rule removed: {rule}"
+        elif action == "replace_all":
+            contractor.custom_rules = tool_input.get("rules_text", "").strip()
+            result = "All rules replaced."
+        else:
+            result = "Unknown action."
+
+        db.commit()
+        audit_log(db, memory.contractor_id, "behavior_rules_updated",
+                  subject=f"Rules {action}: {rule[:60]}",
+                  channel="agent", initiated_by="agent")
+        return result
+
     return f"Unknown tool: {tool_name}"
 
 
@@ -1338,11 +1427,17 @@ class ContractorAgent:
 
         # Static prefix (cache-friendly): base instructions + tool schemas
         # Dynamic suffix: context snapshot + date (changes every call)
+        contractor_obj = self.memory.get_contractor()
+        agent_notes = contractor_obj.agent_notes or "None yet."
+        custom_rules = contractor_obj.custom_rules or "None set."
+
         system = SYSTEM_PROMPT.format(
             name=contractor.get("name", "the contractor"),
             trade=contractor.get("trade", "trade"),
             context=json.dumps(context, indent=2, default=str),
             today=datetime.now(timezone.utc).strftime("%A, %B %d, %Y"),
+            agent_notes=agent_notes,
+            custom_rules=custom_rules,
         )
 
         history = self.memory.get_recent_messages(limit=15)
