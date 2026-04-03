@@ -5,8 +5,9 @@ Flow:
   1. Twilio POSTs inbound SMS to /webhook/sms
   2. We look up the contractor by phone number
   3. If unknown: start onboarding
-  4. If known: route to agent
-  5. Reply with TwiML
+  4. If known + onboarding incomplete: continue onboarding
+  5. Route to agent
+  6. Reply with TwiML
 """
 import os
 from fastapi import APIRouter, Request, Form
@@ -22,16 +23,12 @@ load_dotenv()
 
 router = APIRouter()
 
-# Simple in-memory onboarding state (survives restarts poorly but fine for MVP)
-# Keyed by phone number, value is stage name
-_onboarding_state: dict[str, dict] = {}
-
 
 def twiml_reply(message: str) -> PlainTextResponse:
-    """Wrap a text reply in TwiML."""
+    safe = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Message>{message}</Message>
+    <Message>{safe}</Message>
 </Response>"""
     return PlainTextResponse(xml, media_type="text/xml")
 
@@ -47,11 +44,10 @@ async def sms_webhook(
 ):
     phone = From.strip()
     body = Body.strip()
-
-    # STOP / HELP compliance keywords — handle before anything else
     upper = body.upper().strip()
+
+    # STOP / HELP compliance keywords
     if upper in ("STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"):
-        # Twilio auto-handles STOP at carrier level, but log it
         return twiml_reply(
             "You have been unsubscribed from FIELDHAND. "
             "No further messages will be sent. "
@@ -60,8 +56,7 @@ async def sms_webhook(
     if upper == "HELP":
         return twiml_reply(
             "FIELDHAND Help: Text me anything about your jobs, expenses, or invoices. "
-            "Reply STOP to unsubscribe. "
-            "Support: support@fieldhand.app"
+            "Reply STOP to unsubscribe. Support: support@fieldhand.app"
         )
     if upper in ("START", "UNSTOP"):
         return twiml_reply(
@@ -73,156 +68,134 @@ async def sms_webhook(
     try:
         contractor = db.query(Contractor).filter(Contractor.phone == phone).first()
 
-        # ---- ONBOARDING: unknown number ---- #
+        # Unknown number — start onboarding
         if not contractor:
-            return await _handle_onboarding(phone, body, db)
+            return await _handle_onboarding_new(phone, body, db)
 
-        # ---- IMAGE / RECEIPT ---- #
-        num_media = int(NumMedia or 0)
-        if num_media > 0 and MediaUrl0:
+        # Known but onboarding not complete — continue onboarding
+        if not contractor.onboarding_complete:
+            return await _continue_onboarding(contractor, body, db)
+
+        # Image / receipt
+        if int(NumMedia or 0) > 0 and MediaUrl0:
             reply = await _handle_media(MediaUrl0, MediaContentType0, body, contractor, db)
             return twiml_reply(reply)
 
-        # ---- NORMAL CHAT ---- #
+        # Normal agent chat
         agent = ContractorAgent(db=db, contractor_id=contractor.id)
-        reply = agent.chat(body, channel="sms")
+        reply, _cost = agent.chat(body, channel="sms")
         return twiml_reply(reply)
 
     finally:
         db.close()
 
 
-async def _handle_onboarding(phone: str, body: str, db: Session) -> PlainTextResponse:
-    """
-    Multi-step onboarding wizard.
-    Stages: start -> name -> trade -> business -> rate -> terms -> auto_followup -> done
-    """
-    state = _onboarding_state.get(phone, {"stage": "start"})
+# ── Onboarding state machine ──────────────────────────────────────────────────
+# Keyed by phone number. In prod: move to Redis or DB.
+# Stages: start → ask_name_trade → ask_business_name → ask_rate → done
+# Optional: ask_trade_only (when no comma in name+trade message)
+_onboarding_state: dict[str, dict] = {}
 
-    if state["stage"] == "start":
-        _onboarding_state[phone] = {"stage": "ask_name"}
-        return twiml_reply(
-            "Hey! I'm FIELDHAND — your AI business assistant. "
-            "I handle your invoices, expenses, jobs, and client follow-ups. "
-            "Takes 60 seconds to set up.\n\n"
-            "What's your first and last name?"
-        )
 
-    elif state["stage"] == "ask_name":
-        state["name"] = body.strip().title()
-        state["stage"] = "ask_trade"
+async def _handle_onboarding_new(phone: str, body: str, db: Session) -> PlainTextResponse:
+    _onboarding_state[phone] = {"stage": "ask_name_trade"}
+    return twiml_reply(
+        "Hey, I'm FIELDHAND — your AI business assistant. "
+        "Handles your invoices, quotes, permits, and client follow-ups.\n\n"
+        "What's your name and trade? (e.g. 'Jake Morales, electrician')"
+    )
+
+
+async def _continue_onboarding(contractor: Contractor, body: str, db: Session) -> PlainTextResponse:
+    phone = contractor.phone
+    state = _onboarding_state.get(phone)
+
+    # If server restarted and state is lost, reconstruct from contractor fields
+    if not state:
+        state = _reconstruct_state(contractor)
         _onboarding_state[phone] = state
-        first = state["name"].split()[0]
-        return twiml_reply(
-            f"Nice to meet you, {first}! "
-            f"What trade are you in?\n"
-            f"(e.g. electrician, plumber, HVAC, carpenter, general contractor)"
-        )
 
-    elif state["stage"] == "ask_trade":
-        state["trade"] = body.strip().lower()
-        state["stage"] = "ask_business"
-        _onboarding_state[phone] = state
+    stage = state.get("stage", "ask_name_trade")
+    text = body.strip()
+
+    # ── 3-question boot ───────────────────────────────────────────────────────
+
+    if stage == "ask_name_trade":
+        if "," in text:
+            parts = [p.strip() for p in text.split(",", 1)]
+            contractor.name = parts[0].title()
+            contractor.trade = parts[1].lower()
+            db.commit()
+            state["stage"] = "ask_business_name"
+            first = contractor.name.split()[0]
+            return twiml_reply(
+                f"Got it, {first}. What's your business name?\n"
+                "(Or just your name if you're solo)"
+            )
+        else:
+            # No comma — save name and ask trade separately
+            contractor.name = text.title()
+            db.commit()
+            state["stage"] = "ask_trade_only"
+            return twiml_reply("And your trade? (e.g. electrician, plumber, HVAC)")
+
+    elif stage == "ask_trade_only":
+        contractor.trade = text.lower()
+        db.commit()
+        state["stage"] = "ask_business_name"
         return twiml_reply(
             "What's your business name?\n"
-            "(or just your name if you're solo)"
+            "(Or just your name if you're solo)"
         )
 
-    elif state["stage"] == "ask_business":
-        state["business_name"] = body.strip()
-        state["stage"] = "ask_rate"
-        _onboarding_state[phone] = state
-        return twiml_reply(
-            "What's your labor rate per hour?\n"
-            "(just the number — e.g. 95)"
-        )
-
-    elif state["stage"] == "ask_rate":
-        try:
-            rate = float(body.strip().replace("$", "").replace("/hr", "").strip())
-        except ValueError:
-            return twiml_reply("Just send the number — e.g. 95 or 125")
-        state["labor_rate"] = rate
-        state["stage"] = "ask_terms"
-        _onboarding_state[phone] = state
-        return twiml_reply(
-            "Payment terms? This goes on your invoices.\n"
-            "Reply:\n"
-            "1 — Net 15 (pay within 15 days)\n"
-            "2 — Net 30 (pay within 30 days)\n"
-            "3 — Due on receipt\n"
-            "4 — 50% deposit required"
-        )
-
-    elif state["stage"] == "ask_terms":
-        terms_map = {
-            "1": "Net 15", "net 15": "Net 15",
-            "2": "Net 30", "net 30": "Net 30",
-            "3": "Due on Receipt", "due on receipt": "Due on Receipt",
-            "4": "50% Deposit Required", "50%": "50% Deposit Required",
-        }
-        terms = terms_map.get(body.strip().lower(), "Net 15")
-        state["invoice_terms"] = terms
-        state["stage"] = "ask_auto_followup"
-        _onboarding_state[phone] = state
-        return twiml_reply(
-            f"Got it — {terms}.\n\n"
-            "Last question: should I automatically follow up "
-            "on unpaid invoices for you?\n"
-            "Reply YES or NO"
-        )
-
-    elif state["stage"] == "ask_auto_followup":
-        auto = body.strip().upper().startswith("Y")
-        state["auto_followup"] = auto
-
-        # Create the contractor
-        contractor = Contractor(
-            name=state["name"],
-            phone=phone,
-            trade=state["trade"],
-            business_name=state["business_name"],
-            labor_rate=state.get("labor_rate", 85.0),
-            markup_pct=20.0,
-            invoice_terms=state.get("invoice_terms", "Net 15"),
-            onboarding_complete=True,
-        )
-        db.add(contractor)
+    elif stage == "ask_business_name":
+        contractor.business_name = text
         db.commit()
-        db.refresh(contractor)
-        del _onboarding_state[phone]
-
-        first = contractor.name.split()[0]
-        auto_msg = "I'll handle invoice follow-ups automatically." if auto else "I'll flag overdue invoices for you to review."
-
-        # Build the dashboard + email connect URL
-        base_url = os.getenv("APP_BASE_URL", "https://fieldhand-ai.loca.lt")
-        email_url = f"{base_url}/email/connect/{contractor.id}"
-
+        state["stage"] = "ask_rate"
         return twiml_reply(
-            f"You're all set, {first}! 🎉\n\n"
-            f"Here's what you can text me:\n"
-            f"• \"New job, [client], [address], [description]\"\n"
-            f"• \"Log $340 materials, Mitchell job\"\n"
-            f"• \"How much do I have outstanding?\"\n"
-            f"• \"List my jobs\"\n\n"
-            f"{auto_msg}\n\n"
-            f"Want me to handle your email too? Connect it here:\n"
-            f"{email_url}"
+            "What's your hourly labor rate? (just the number, e.g. 110)"
         )
 
+    elif stage == "ask_rate":
+        try:
+            rate = float(text.replace("$", "").replace("/hr", "").replace("/hour", "").strip())
+            contractor.labor_rate = rate
+            contractor.onboarding_complete = True
+            db.commit()
+        except ValueError:
+            return twiml_reply("Just send the number — e.g. 95 or 110")
+
+        if phone in _onboarding_state:
+            del _onboarding_state[phone]
+
+        first = (contractor.name or "").split()[0]
+        return twiml_reply(
+            f"You're in, {first}! Here's what you can text me:\n\n"
+            f"• \"New job, Smith, 412 Maple St, panel upgrade\"\n"
+            f"• \"Quote Smith — 200A panel $210, 8 hours labor, 25% markup\"\n"
+            f"• \"Smith job is done. Send the invoice.\"\n\n"
+            f"I'll ask for anything else as we go. What's your first job?"
+        )
+
+    # ── Catch-all ────────────────────────────────────────────────────────────
     return twiml_reply("Something went wrong. Text 'hi' to start over.")
 
 
-async def _handle_media(
-    media_url: str,
-    content_type: str,
-    caption: str,
-    contractor: Contractor,
-    db: Session,
-) -> str:
-    """Route image messages — likely receipts or job site photos."""
-    # For now, treat all images as potential receipts
+def _reconstruct_state(contractor: Contractor) -> dict:
+    """Reconstruct onboarding state from what's already saved (simplified for 3-question flow)."""
+    if not contractor.name:
+        return {"stage": "ask_name_trade"}
+    if not contractor.trade:
+        return {"stage": "ask_trade_only"}
+    if not contractor.business_name:
+        return {"stage": "ask_business_name"}
+    if not contractor.labor_rate or contractor.labor_rate == 85.0:
+        return {"stage": "ask_rate"}
+    # All 3 questions answered — shouldn't reach here mid-onboarding
+    return {"stage": "ask_name_trade"}
+
+
+async def _handle_media(media_url, content_type, caption, contractor, db):
     result = await process_receipt_image(
         image_url=media_url,
         contractor_id=contractor.id,

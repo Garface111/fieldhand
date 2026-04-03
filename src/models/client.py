@@ -22,6 +22,9 @@ class Client(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     referral_source: Mapped[str | None] = mapped_column(String, nullable=True)
     payment_behavior: Mapped[str | None] = mapped_column(String, nullable=True)
+    client_type: Mapped[str | None] = mapped_column(String, nullable=True)  # homeowner/business/gc/property_manager
+    property_owner_name: Mapped[str | None] = mapped_column(String, nullable=True)  # if client != owner
+    property_type: Mapped[str | None] = mapped_column(String, nullable=True)  # single_family/multi_family/commercial/industrial
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     contractor: Mapped["Contractor"] = relationship("Contractor", back_populates="clients")  # noqa

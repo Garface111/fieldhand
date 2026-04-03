@@ -126,6 +126,17 @@ class Memory:
                 "markup_pct": contractor.markup_pct,
                 "invoice_terms": contractor.invoice_terms,
                 "license_no": contractor.license_no,
+                "license_classification": contractor.license_classification,
+                "business_address": contractor.business_address,
+                "email": contractor.email or contractor.work_email,
+                "gl_carrier": contractor.gl_carrier,
+                "gl_policy_number": contractor.gl_policy_number,
+                "gl_expiration": contractor.gl_expiration,
+                "wc_exempt": contractor.wc_exempt,
+                "wc_carrier": contractor.wc_carrier,
+                "wc_policy": contractor.wc_policy,
+                "insurance_agent_name": contractor.insurance_agent_name,
+                "insurance_agent_phone": contractor.insurance_agent_phone,
             },
             "active_jobs": [
                 {
@@ -158,8 +169,15 @@ class Memory:
                     "name": c.name,
                     "phone": c.phone,
                     "email": c.email,
+                    "address": c.address,
+                    "client_type": c.client_type,
+                    "property_type": c.property_type,
                     "payment_behavior": c.payment_behavior,
                     "notes": c.notes,
+                    "missing_info": [
+                        f for f, v in [("email", c.email), ("phone", c.phone), ("address", c.address)]
+                        if not v
+                    ],
                 }
                 for c in recent_clients
             ],

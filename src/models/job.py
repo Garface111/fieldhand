@@ -48,7 +48,7 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    contractor: Mapped["Contractor"] = relationship("Contractor", back_populates="jobs")  # noqa
+    contractor: Mapped["Contractor"] = relationship("Contractor", back_populates="jobs", foreign_keys=[contractor_id])  # noqa
     client: Mapped["Client | None"] = relationship("Client", back_populates="jobs")  # noqa
     expenses: Mapped[list["Expense"]] = relationship("Expense", back_populates="job")  # noqa
     invoices: Mapped[list["Invoice"]] = relationship("Invoice", back_populates="job")  # noqa

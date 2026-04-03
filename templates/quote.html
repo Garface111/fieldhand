@@ -1,136 +1,411 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <style>
-  body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #1a1a1a; }
-  .header { background: #1e3a5f; color: white; padding: 32px 40px; }
-  .header h1 { margin: 0 0 4px 0; font-size: 26px; letter-spacing: 1px; }
-  .header .tagline { font-size: 13px; opacity: 0.8; margin: 0; }
-  .header .contact { text-align: right; font-size: 13px; margin-top: -48px; }
-  .body { padding: 32px 40px; }
-  .meta-row { display: flex; justify-content: space-between; margin-bottom: 28px; }
-  .meta-block h3 { margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase;
-                    letter-spacing: 1px; color: #888; }
-  .meta-block p { margin: 0; font-size: 14px; }
-  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-                   color: #888; border-bottom: 2px solid #1e3a5f; padding-bottom: 4px;
-                   margin: 24px 0 12px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; padding: 8px 12px; background: #f4f6f9; font-weight: 600;
-       font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-  td { padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
-  .amount { text-align: right; }
-  .totals { margin-top: 16px; }
-  .total-row { display: flex; justify-content: flex-end; padding: 6px 0; font-size: 14px; }
-  .total-row span:first-child { width: 160px; color: #555; }
-  .grand-total { font-size: 18px; font-weight: bold; color: #1e3a5f;
-                  border-top: 2px solid #1e3a5f; padding-top: 10px; margin-top: 4px; }
-  .terms { margin-top: 32px; padding: 16px; background: #f9f9f9;
-           border-left: 3px solid #1e3a5f; font-size: 13px; color: #555; }
-  .footer { margin-top: 32px; padding: 16px 40px; background: #f4f6f9;
-            font-size: 12px; color: #888; text-align: center; }
-  .badge { display: inline-block; background: #e8f0fe; color: #1e3a5f;
-           padding: 4px 10px; border-radius: 4px; font-size: 11px;
-           font-weight: 600; text-transform: uppercase; }
+  /* ── Reset & Base ─────────────────────────────────────── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #1c1c1e;
+    background: #fff;
+  }
+
+  /* ── Page ─────────────────────────────────────────────── */
+  .page { max-width: 780px; margin: 0 auto; }
+
+  /* ── Header ───────────────────────────────────────────── */
+  .header {
+    padding: 36px 48px 28px;
+    border-bottom: 3px solid #0f2744;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .brand-name {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0f2744;
+    letter-spacing: -0.3px;
+    margin-bottom: 3px;
+  }
+  .brand-trade {
+    font-size: 11px;
+    color: #8e8e93;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+  }
+  .header-contact {
+    text-align: right;
+    font-size: 12px;
+    color: #48484a;
+    line-height: 1.7;
+  }
+  .header-contact .license {
+    display: inline-block;
+    margin-top: 5px;
+    font-size: 10px;
+    color: #8e8e93;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── Document type strip ──────────────────────────────── */
+  .doc-strip {
+    background: #0f2744;
+    padding: 10px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .doc-type {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .doc-number {
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Body ─────────────────────────────────────────────── */
+  .body { padding: 32px 48px; }
+
+  /* ── Meta grid ────────────────────────────────────────── */
+  .meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    border: 1px solid #e5e5ea;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 32px;
+  }
+  .meta-cell {
+    padding: 14px 18px;
+    border-right: 1px solid #e5e5ea;
+  }
+  .meta-cell:last-child { border-right: none; }
+  .meta-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #8e8e93;
+    margin-bottom: 5px;
+  }
+  .meta-value {
+    font-size: 13px;
+    color: #1c1c1e;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .meta-value.accent { color: #0f2744; font-weight: 700; }
+
+  /* ── Section heading ──────────────────────────────────── */
+  .section-heading {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #8e8e93;
+    margin: 28px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e5e5ea;
+  }
+
+  /* ── Scope of work ────────────────────────────────────── */
+  .scope-box {
+    background: #f9f9fb;
+    border-left: 3px solid #0f2744;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #3a3a3c;
+    line-height: 1.65;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 28px;
+  }
+
+  /* ── Line items table ─────────────────────────────────── */
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .items-table thead tr {
+    background: #0f2744;
+    color: #fff;
+  }
+  .items-table thead th {
+    padding: 9px 12px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: left;
+  }
+  .items-table thead th.r { text-align: right; }
+  .items-table tbody tr { border-bottom: 1px solid #f2f2f7; }
+  .items-table tbody tr:nth-child(even) { background: #f9f9fb; }
+  .items-table tbody td {
+    padding: 10px 12px;
+    vertical-align: top;
+    color: #1c1c1e;
+  }
+  .items-table tbody td.r { text-align: right; color: #48484a; }
+  .items-table tbody td.desc { max-width: 320px; }
+  .items-table tfoot tr { background: #f2f2f7; }
+  .items-table tfoot td {
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #8e8e93;
+  }
+
+  /* ── Totals box ───────────────────────────────────────── */
+  .totals-wrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 20px;
+  }
+  .totals-box {
+    width: 260px;
+    border: 1px solid #e5e5ea;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 14px;
+    font-size: 12px;
+    border-bottom: 1px solid #f2f2f7;
+    color: #48484a;
+  }
+  .totals-row:last-child { border-bottom: none; }
+  .totals-row.grand {
+    background: #0f2744;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 11px 14px;
+  }
+
+  /* ── Terms / notes ────────────────────────────────────── */
+  .terms-box {
+    margin-top: 28px;
+    padding: 14px 18px;
+    background: #f9f9fb;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #48484a;
+    line-height: 1.65;
+  }
+  .terms-box strong { color: #1c1c1e; }
+
+  .notes-box {
+    margin-top: 16px;
+    padding: 12px 18px;
+    border: 1px solid #e5e5ea;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #48484a;
+    line-height: 1.65;
+  }
+
+  /* ── Acceptance block ─────────────────────────────────── */
+  .acceptance {
+    margin-top: 36px;
+    border-top: 1px solid #e5e5ea;
+    padding-top: 24px;
+  }
+  .acceptance-heading {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #8e8e93;
+    margin-bottom: 14px;
+  }
+  .sig-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  .sig-block { }
+  .sig-line {
+    border-bottom: 1px solid #1c1c1e;
+    margin-bottom: 6px;
+    height: 36px;
+  }
+  .sig-label {
+    font-size: 10px;
+    color: #8e8e93;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  /* ── Footer ───────────────────────────────────────────── */
+  .footer {
+    margin-top: 40px;
+    padding: 14px 48px;
+    background: #f9f9fb;
+    border-top: 1px solid #e5e5ea;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: #8e8e93;
+  }
+  .footer-left { }
+  .footer-right { text-align: right; }
 </style>
 </head>
 <body>
+<div class="page">
 
-<div class="header">
-  <h1>{{ business_name }}</h1>
-  <p class="tagline">{{ trade | title }} Services</p>
-  <div class="contact">
-    <p>{{ contractor_phone }}</p>
-    {% if contractor_email %}<p>{{ contractor_email }}</p>{% endif %}
-    {% if license_no %}<p>Lic #{{ license_no }}</p>{% endif %}
-  </div>
-</div>
-
-<div class="body">
-
-  <div style="margin-bottom: 16px;">
-    <span class="badge">Estimate</span>
-  </div>
-
-  <div class="meta-row">
-    <div class="meta-block">
-      <h3>Prepared For</h3>
-      <p><strong>{{ client_name }}</strong></p>
-      {% if client_address %}<p>{{ client_address }}</p>{% endif %}
-      {% if client_phone %}<p>{{ client_phone }}</p>{% endif %}
-      {% if client_email %}<p>{{ client_email }}</p>{% endif %}
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="brand-name">{{ business_name }}</div>
+      <div class="brand-trade">{{ trade | title }} Services</div>
     </div>
-    <div class="meta-block" style="text-align: right;">
-      <h3>Estimate Details</h3>
-      <p>Date: {{ date }}</p>
-      <p>Valid Until: {{ valid_until }}</p>
-      <p>Estimate #: {{ estimate_number }}</p>
+    <div class="header-contact">
+      {{ contractor_phone }}<br>
+      {% if contractor_email %}{{ contractor_email }}<br>{% endif %}
+      {% if license_no %}<span class="license">License #{{ license_no }}</span>{% endif %}
     </div>
   </div>
 
-  <div class="section-title">Scope of Work</div>
-  <p style="font-size:14px; line-height:1.6; color:#333;">{{ description }}</p>
+  <!-- Doc strip -->
+  <div class="doc-strip">
+    <span class="doc-type">Estimate &amp; Proposal</span>
+    <span class="doc-number">{{ estimate_number }}</span>
+  </div>
 
-  <div class="section-title">Line Items</div>
-  <table>
-    <thead>
-      <tr>
-        <th>Description</th>
-        <th>Qty</th>
-        <th>Unit Price</th>
-        <th class="amount">Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in line_items %}
-      <tr>
-        <td>{{ item.description }}</td>
-        <td>{{ item.qty }}</td>
-        <td>${{ "%.2f"|format(item.unit_price) }}</td>
-        <td class="amount">${{ "%.2f"|format(item.amount) }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="body">
 
-  <div class="totals">
-    <div class="total-row">
-      <span>Subtotal</span>
-      <span>${{ "%.2f"|format(subtotal) }}</span>
+    <!-- Meta grid -->
+    <div class="meta-grid">
+      <div class="meta-cell">
+        <div class="meta-label">Prepared For</div>
+        <div class="meta-value"><strong>{{ client_name }}</strong></div>
+        {% if client_address %}<div class="meta-value" style="font-size:11px;color:#48484a;margin-top:3px;">{{ client_address }}</div>{% endif %}
+        {% if client_phone %}<div class="meta-value" style="font-size:11px;color:#48484a;">{{ client_phone }}</div>{% endif %}
+        {% if client_email %}<div class="meta-value" style="font-size:11px;color:#48484a;">{{ client_email }}</div>{% endif %}
+      </div>
+      <div class="meta-cell">
+        <div class="meta-label">Date Issued</div>
+        <div class="meta-value">{{ date }}</div>
+        <div class="meta-label" style="margin-top:10px;">Valid Until</div>
+        <div class="meta-value">{{ valid_until }}</div>
+      </div>
+      <div class="meta-cell">
+        <div class="meta-label">Total Amount</div>
+        <div class="meta-value accent" style="font-size:20px;">${{ "%.2f"|format(total) }}</div>
+        <div class="meta-label" style="margin-top:10px;">Payment Terms</div>
+        <div class="meta-value">{{ payment_terms }}</div>
+      </div>
     </div>
-    {% if tax_rate %}
-    <div class="total-row">
-      <span>Tax ({{ tax_rate }}%)</span>
-      <span>${{ "%.2f"|format(tax_amount) }}</span>
+
+    <!-- Scope -->
+    {% if description %}
+    <div class="section-heading">Scope of Work</div>
+    <div class="scope-box">{{ description }}</div>
+    {% endif %}
+
+    <!-- Line items -->
+    <div class="section-heading">Line Items</div>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="r">Qty</th>
+          <th class="r">Unit Price</th>
+          <th class="r">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in line_items %}
+        <tr>
+          <td class="desc">{{ item.description }}</td>
+          <td class="r">{{ item.qty }}</td>
+          <td class="r">${{ "%.2f"|format(item.unit_price) }}</td>
+          <td class="r">${{ "%.2f"|format(item.amount) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Totals -->
+    <div class="totals-wrap">
+      <div class="totals-box">
+        <div class="totals-row">
+          <span>Subtotal</span>
+          <span>${{ "%.2f"|format(subtotal) }}</span>
+        </div>
+        {% if tax_rate %}
+        <div class="totals-row">
+          <span>Tax ({{ tax_rate }}%)</span>
+          <span>${{ "%.2f"|format(tax_amount) }}</span>
+        </div>
+        {% endif %}
+        {% if deposit_required %}
+        <div class="totals-row">
+          <span>Deposit ({{ deposit_pct }}%)</span>
+          <span>${{ "%.2f"|format(deposit_amount) }}</span>
+        </div>
+        {% endif %}
+        <div class="totals-row grand">
+          <span>Total</span>
+          <span>${{ "%.2f"|format(total) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Terms -->
+    <div class="terms-box">
+      <strong>Payment Terms:</strong> {{ payment_terms }}.
+      {% if deposit_required %}
+      A deposit of {{ deposit_pct }}% (${{ "%.2f"|format(deposit_amount) }}) is required to schedule work.
+      {% endif %}
+      This estimate is valid for 30 days. Prices subject to change after expiration.
+      All work performed in accordance with applicable building codes and manufacturer specifications.
+    </div>
+
+    {% if notes %}
+    <div class="notes-box">
+      <strong>Notes:</strong> {{ notes }}
     </div>
     {% endif %}
-    <div class="total-row grand-total">
-      <span>TOTAL</span>
-      <span>${{ "%.2f"|format(total) }}</span>
+
+    <!-- Acceptance -->
+    <div class="acceptance">
+      <div class="acceptance-heading">Authorization to Proceed</div>
+      <div class="sig-grid">
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div class="sig-label">Client Signature &nbsp;&nbsp;&nbsp; Date: ___________</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line"></div>
+          <div class="sig-label">Authorized by — {{ business_name }}</div>
+        </div>
+      </div>
     </div>
+
+  </div><!-- /body -->
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-left">{{ business_name }} &bull; {{ contractor_phone }}{% if contractor_email %} &bull; {{ contractor_email }}{% endif %}</div>
+    <div class="footer-right">{{ estimate_number }} &bull; Page 1</div>
   </div>
 
-  <div class="terms">
-    <strong>Payment Terms:</strong> {{ payment_terms }}<br>
-    {% if deposit_required %}
-    <strong>Deposit Required:</strong> {{ deposit_pct }}% (${{"%.2f"|format(deposit_amount)}}) due to schedule.<br>
-    {% endif %}
-    This estimate is valid for 30 days from the date above. Prices subject to change after expiration.
-  </div>
-
-  {% if notes %}
-  <div class="section-title">Notes</div>
-  <p style="font-size:13px; color:#555;">{{ notes }}</p>
-  {% endif %}
-
 </div>
-
-<div class="footer">
-  {{ business_name }} &bull; {{ contractor_phone }}
-  {% if contractor_email %} &bull; {{ contractor_email }}{% endif %}
-  &bull; Thank you for your business!
-</div>
-
 </body>
 </html>

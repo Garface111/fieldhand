@@ -8,9 +8,10 @@ from src.models.document import Document
 from src.models.consent import Consent
 from src.models.magic_link import MagicLink
 from src.models.audit_log import AuditLog
+from src.models.pending_action import PendingAction
 
 __all__ = [
     "Contractor", "Client", "Job", "JobStatus",
     "Expense", "Invoice", "InvoiceStatus", "Message", "Document",
-    "Consent", "MagicLink", "AuditLog"
+    "Consent", "MagicLink", "AuditLog", "PendingAction"
 ]

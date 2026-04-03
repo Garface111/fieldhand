@@ -83,8 +83,10 @@ def main():
             break
 
         try:
-            response = agent.chat(user_input, channel="cli")
-            print(f"\nFIELDHAND: {response}\n")
+            response, cost = agent.chat(user_input, channel="cli")
+            tier_label = ['', 'EXECUTE', 'REASON', 'INVESTIGATE'][cost.tier]
+            print(f"\nFIELDHAND: {response}")
+            print(f"  [{tier_label} | {cost.model.split('-')[1].upper()} | ${cost.total_cost:.5f} | ~${cost.monthly_projection:.2f}/mo]\n")
         except Exception as e:
             print(f"\n[Error: {e}]\n")
             import traceback
