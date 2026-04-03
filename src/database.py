@@ -9,7 +9,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fieldhand.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+# Fall back to SQLite if not set or empty
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///./fieldhand.db"
+
+# Railway / Heroku provide postgres:// but SQLAlchemy 2.x requires postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # SQLite needs foreign key enforcement turned on manually
 engine = create_engine(
