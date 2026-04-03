@@ -16,3 +16,4 @@ build/
 .pytest_cache/
 htmlcov/
 .coverage
+SESSION_NOTES.md
