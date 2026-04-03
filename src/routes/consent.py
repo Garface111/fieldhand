@@ -38,6 +38,11 @@ async def privacy_page(request: Request):
     return templates.TemplateResponse(request=request, name="privacy.html")
 
 
+@router.get("/terms", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    return templates.TemplateResponse(request=request, name="terms.html")
+
+
 @router.post("/optin")
 async def submit_optin(
     data: OptInRequest,
