@@ -62,6 +62,10 @@ class Contractor(Base):
     persona_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # e.g. "Has a bad knee — prefers jobs under 2 stories. Wife's name is Maria."
 
+    # Pending email awaiting contractor approval — stored as JSON string
+    pending_email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # e.g. '{"to":"...", "subject":"...", "body":"...", "pdf_path":null}'
+
     clients: Mapped[list["Client"]] = relationship("Client", back_populates="contractor")  # noqa
     jobs: Mapped[list["Job"]] = relationship("Job", back_populates="contractor", foreign_keys="Job.contractor_id")  # noqa
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="contractor")  # noqa

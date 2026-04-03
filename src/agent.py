@@ -93,6 +93,14 @@ When the contractor tells you to always/never do something, or sets a preference
 immediately call update_behavior_rules to save it. Don't just acknowledge it — save it.
 When you learn something worth remembering (a pattern, a preference, a personal detail),
 call update_agent_memory to store it. You have a persistent memory — use it.
+
+EMAIL APPROVAL RULE — critical:
+Before sending ANY email to a client or outside party, you MUST show the contractor
+a preview and ask for confirmation. Use send_email or draft_email to stage the draft —
+the system will hold it and ask the contractor "Send it? Reply YES to confirm."
+Never send an email without explicit contractor approval. No exceptions.
+The only time you send without asking is if the contractor has JUST said "yes", "send it",
+"looks good", "confirm", or similar in response to a specific pending email you showed them.
 """
 
 # ─────────────────────────────────────────────────────────────────────────── #
@@ -799,35 +807,40 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
             notes=tool_input.get("notes"),
         )
 
-        results = []
-
-        # Send to client
+        # Stage quote for contractor approval
         client_email = tool_input.get("client_email") or (client_obj.email if client_obj else None)
         if client_email and contractor and contractor.gmail_refresh_token:
-            try:
-                _send_quote_email(
-                    gmail_token=contractor.gmail_refresh_token,
-                    to=client_email,
-                    subject=f"Estimate — {job.title}",
-                    body=(
-                        f"Hi {client_obj.name if client_obj else 'there'},\n\n"
-                        f"Please find your estimate attached for '{job.title}'.\n\n"
-                        f"Total: ${total:,.2f}\n"
-                        f"Valid for 30 days.\n\n"
-                        f"Reply to approve or call to discuss.\n\n"
-                        f"{contractor.name}\n{contractor.business_name}\n{contractor.phone}"
-                    ),
-                    pdf_path=pdf_path,
-                    pdf_filename=Path(pdf_path).name,
-                )
-                results.append(f"Quote sent to {client_email}")
-                audit_log(db, memory.contractor_id, "quote_sent",
-                          subject=f"Quote for '{job.title}' to {client_email}",
-                          channel="email", initiated_by="agent")
-            except Exception as e:
-                results.append(f"Failed to send to client: {e}")
-        else:
-            results.append(f"No client email — PDF saved at {pdf_path}")
+            import json as _json
+            client_first = client_obj.name if client_obj else "there"
+            quote_body = (
+                f"Hi {client_first},\n\n"
+                f"Please find your estimate attached for '{job.title}'.\n\n"
+                f"Total: ${total:,.2f}\n"
+                f"Valid for 30 days.\n\n"
+                f"Reply to approve or call to discuss.\n\n"
+                f"{contractor.name}\n{contractor.business_name}\n{contractor.phone}"
+            )
+            contractor.pending_email = _json.dumps({
+                "to": client_email,
+                "subject": f"Estimate — {job.title}",
+                "body": quote_body,
+                "pdf_path": pdf_path,
+            })
+            db.commit()
+            audit_log(db, memory.contractor_id, "email_staged",
+                      subject=f"Quote pending approval: {job.title} → {client_email}",
+                      channel="agent", initiated_by="agent")
+            preview = quote_body[:280]
+            return (
+                f"Quote ready — ${total:,.2f} for {client_obj.name if client_obj else 'client'}.\n\n"
+                f"To: {client_email}\n"
+                f"Subject: Estimate — {job.title}\n\n"
+                f"{preview}\n\n"
+                f"Reply YES to send, or tell me what to change."
+            )
+
+        results = []
+        results.append(f"No client email — PDF saved at {pdf_path}")
 
         # Send preview copy to contractor
         contractor_email = contractor.work_email or contractor.email if contractor else None
@@ -1111,26 +1124,27 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
             return format_block_message(_rev, "email")
         # ────────────────────────────────────────────────────────────────────
 
-        from src.email_client import GmailClient
-        gmail = GmailClient(contractor.gmail_refresh_token)
-        try:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(gmail.send(
-                to=tool_input["to"],
-                subject=tool_input["subject"],
-                body=tool_input["body"],
-            ))
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(gmail.send(**tool_input))
-            loop.close()
-        audit_log(db, memory.contractor_id, "email_sent",
-                  subject=f"To: {tool_input['to']} — {tool_input['subject']}",
-                  channel="email", initiated_by="agent")
-        return f"Email sent to {tool_input['to']} — {tool_input['subject']}"
+        # Stage the email — save as pending and ask contractor to confirm
+        import json as _json
+        contractor.pending_email = _json.dumps({
+            "to": tool_input["to"],
+            "subject": tool_input["subject"],
+            "body": tool_input["body"],
+            "pdf_path": None,
+        })
+        db.commit()
+        audit_log(db, memory.contractor_id, "email_staged",
+                  subject=f"Pending approval: to {tool_input['to']} — {tool_input['subject']}",
+                  channel="agent", initiated_by="agent")
+        preview = tool_input["body"][:300] + ("..." if len(tool_input["body"]) > 300 else "")
+        return (
+            f"Draft ready to send to {tool_input['to']}:\n"
+            f"Subject: {tool_input['subject']}\n\n"
+            f"{preview}\n\n"
+            f"Reply YES to send, or tell me what to change."
+        )
 
     elif tool_name == "draft_email":
-        # draft_email now sends immediately — no approval loop
         contractor = memory.get_contractor()
         if not contractor or not contractor.gmail_refresh_token:
             return f"Email not connected. Can't send to {tool_input['to']}."
@@ -1149,23 +1163,25 @@ def execute_tool(tool_name: str, tool_input: dict, memory: Memory, db: Session) 
             return format_block_message(_rev2, "email")
         # ────────────────────────────────────────────────────────────────────
 
-        from src.email_client import GmailClient
-        gmail = GmailClient(contractor.gmail_refresh_token)
-        try:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(gmail.send(
-                to=tool_input["to"],
-                subject=tool_input["subject"],
-                body=tool_input["body"],
-            ))
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(gmail.send(to=tool_input["to"], subject=tool_input["subject"], body=tool_input["body"]))
-            loop.close()
-        audit_log(db, memory.contractor_id, "email_sent",
-                  subject=f"To: {tool_input['to']} — {tool_input['subject']}",
-                  channel="email", initiated_by="agent")
-        return f"Email sent to {tool_input['to']} — {tool_input['subject']}"
+        # Stage the email — same as send_email, requires contractor approval
+        import json as _json
+        contractor.pending_email = _json.dumps({
+            "to": tool_input["to"],
+            "subject": tool_input["subject"],
+            "body": tool_input["body"],
+            "pdf_path": None,
+        })
+        db.commit()
+        audit_log(db, memory.contractor_id, "email_staged",
+                  subject=f"Pending approval: to {tool_input['to']} — {tool_input['subject']}",
+                  channel="agent", initiated_by="agent")
+        preview = tool_input["body"][:300] + ("..." if len(tool_input["body"]) > 300 else "")
+        return (
+            f"Draft ready to send to {tool_input['to']}:\n"
+            f"Subject: {tool_input['subject']}\n\n"
+            f"{preview}\n\n"
+            f"Reply YES to send, or tell me what to change."
+        )
 
     elif tool_name == "update_contractor_profile":
         contractor = memory.get_contractor()

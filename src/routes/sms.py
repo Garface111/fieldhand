@@ -76,6 +76,13 @@ async def sms_webhook(
         if not contractor.onboarding_complete:
             return await _continue_onboarding(contractor, body, db)
 
+        # Email approval — contractor replying YES/SEND to a pending draft
+        if upper in ("YES", "SEND", "SEND IT", "CONFIRM", "LOOKS GOOD", "OK SEND", "YEP", "YUP", "DO IT"):
+            if contractor.pending_email:
+                result = _fire_pending_email(contractor, db)
+                return twiml_reply(result)
+            # No pending email — fall through to normal agent
+
         # Email connect shortcut — contractor texting "connect email" or similar
         if any(kw in upper for kw in ("CONNECT EMAIL", "LINK EMAIL", "EMAIL SETUP", "SETUP EMAIL", "CONNECT GMAIL")):
             base_url = os.getenv("APP_BASE_URL", "").rstrip("/")
@@ -228,6 +235,69 @@ async def _handle_media(media_url, content_type, caption, contractor, db):
         db=db,
     )
     return result
+
+
+def _fire_pending_email(contractor, db) -> str:
+    """
+    Actually send the staged email that contractor just approved with YES.
+    Clears pending_email after sending.
+    """
+    import json
+    try:
+        data = json.loads(contractor.pending_email)
+    except Exception:
+        contractor.pending_email = None
+        db.commit()
+        return "Couldn't read the pending email. Try drafting it again."
+
+    to = data.get("to", "")
+    subject = data.get("subject", "")
+    body = data.get("body", "")
+    pdf_path = data.get("pdf_path")
+
+    if not contractor.gmail_refresh_token:
+        return "Email not connected — can't send. Link your Gmail first."
+
+    try:
+        import asyncio
+        from src.email_client import GmailClient
+        gmail = GmailClient(contractor.gmail_refresh_token)
+
+        if pdf_path:
+            import base64
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+            import os
+            filename = os.path.basename(pdf_path)
+            try:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(gmail.send(to=to, subject=subject, body=body,
+                                                    attachments=[(filename, pdf_bytes)]))
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(gmail.send(to=to, subject=subject, body=body,
+                                                    attachments=[(filename, pdf_bytes)]))
+                loop.close()
+        else:
+            try:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(gmail.send(to=to, subject=subject, body=body))
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(gmail.send(to=to, subject=subject, body=body))
+                loop.close()
+
+        # Clear pending and log
+        contractor.pending_email = None
+        db.commit()
+        from src.audit import log as audit_log
+        audit_log(db, contractor.id, "email_sent",
+                  subject=f"To: {to} — {subject}",
+                  channel="email", initiated_by="contractor")
+        return f"Sent to {to}."
+
+    except Exception as e:
+        return f"Failed to send: {e}. Try again or check your Gmail connection."
 
 
 def _send_follow_up_sms(to: str, message: str):
