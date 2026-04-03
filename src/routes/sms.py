@@ -76,6 +76,20 @@ async def sms_webhook(
         if not contractor.onboarding_complete:
             return await _continue_onboarding(contractor, body, db)
 
+        # Email connect shortcut — contractor texting "connect email" or similar
+        if any(kw in upper for kw in ("CONNECT EMAIL", "LINK EMAIL", "EMAIL SETUP", "SETUP EMAIL", "CONNECT GMAIL")):
+            base_url = os.getenv("APP_BASE_URL", "").rstrip("/")
+            email_link = f"{base_url}/email/connect/{contractor.id}"
+            if contractor.gmail_refresh_token:
+                return twiml_reply(
+                    f"Your email is already connected ({contractor.work_email or 'Gmail'}). "
+                    f"To reconnect with a different account:\n{email_link}"
+                )
+            return twiml_reply(
+                f"Tap the link to connect your email — takes 30 seconds:\n\n{email_link}\n\n"
+                f"After that I'll send quotes, invoices, and follow-ups straight from your inbox."
+            )
+
         # Image / receipt
         if int(NumMedia or 0) > 0 and MediaUrl0:
             reply = await _handle_media(MediaUrl0, MediaContentType0, body, contractor, db)
@@ -169,6 +183,17 @@ async def _continue_onboarding(contractor: Contractor, body: str, db: Session) -
             del _onboarding_state[phone]
 
         first = (contractor.name or "").split()[0]
+        base_url = os.getenv("APP_BASE_URL", "").rstrip("/")
+        email_link = f"{base_url}/email/connect/{contractor.id}"
+
+        # Send the welcome message first, then the email connect prompt as a follow-up SMS
+        _send_follow_up_sms(phone, (
+            f"One more thing — connect your email and I'll send quotes, "
+            f"invoices, and follow-ups straight from your inbox:\n\n"
+            f"{email_link}\n\n"
+            f"Takes 30 seconds. Skip it for now if you want — you can always do it later."
+        ))
+
         return twiml_reply(
             f"You're in, {first}! Here's what you can text me:\n\n"
             f"• \"New job, Smith, 412 Maple St, panel upgrade\"\n"
@@ -203,3 +228,24 @@ async def _handle_media(media_url, content_type, caption, contractor, db):
         db=db,
     )
     return result
+
+
+def _send_follow_up_sms(to: str, message: str):
+    """
+    Send a second SMS out-of-band via Twilio (not via TwiML reply).
+    Used so onboarding can send two messages — the welcome + the email connect link.
+    Fire-and-forget; failures are swallowed so they never block the main reply.
+    """
+    try:
+        from twilio.rest import Client
+        sid = os.getenv("TWILIO_ACCOUNT_SID")
+        token = os.getenv("TWILIO_AUTH_TOKEN")
+        from_num = os.getenv("TWILIO_PHONE_NUMBER")
+        if all([sid, token, from_num]):
+            Client(sid, token).messages.create(
+                from_=from_num,
+                to=to,
+                body=message,
+            )
+    except Exception:
+        pass
