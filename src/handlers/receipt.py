@@ -12,7 +12,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy-initialized so missing OPENAI_API_KEY doesn't crash startup
+_openai_client = None
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 
 async def process_receipt_image(
@@ -45,7 +52,7 @@ Return ONLY a JSON object with keys: vendor, amount, date, items_summary, catego
 If you can't read the amount, set amount to null.{job_context}"""
 
     try:
-        response = await openai_client.chat.completions.create(
+        response = await _get_openai_client().chat.completions.create(
             model="gpt-4o",
             messages=[
                 {
